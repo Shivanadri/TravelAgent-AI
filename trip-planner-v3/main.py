@@ -488,4 +488,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if os.environ.get("PORT"):
+        # Running on Render (or any host that injects PORT) — serve the web API
+        import uvicorn
+        from server import app as _api_app
+        uvicorn.run(_api_app, host="0.0.0.0", port=int(os.environ["PORT"]))
+    else:
+        main()
