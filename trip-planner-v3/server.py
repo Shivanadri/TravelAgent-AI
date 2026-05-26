@@ -32,6 +32,22 @@ class ChatResponse(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@app.get("/")
+def root():
+    return {
+        "service": "Trip Planner v3 API",
+        "status": "running",
+        "docs": "/docs",
+        "endpoints": {
+            "POST /session":              "Start a new conversation, returns first question",
+            "POST /chat/{session_id}":    "Send a message, get next question",
+            "POST /plan/{session_id}":    "Trigger planning once conversation is complete",
+            "GET  /result/{session_id}":  "Poll for the completed itinerary",
+            "GET  /health":               "Health check",
+        },
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
