@@ -19,5 +19,8 @@ rich>=13.0.0
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 
+# ── Experiment tracking ───────────────────────────────────────────────────────
+mlflow>=2.13.0
+
 # ── Environment variables ─────────────────────────────────────────────────────
 python-dotenv>=1.0.0

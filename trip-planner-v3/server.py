@@ -284,71 +284,134 @@ def get_result(session_id: str):
 
 def _run_planning(session_id: str, chat) -> None:
     """Runs in a background thread. Extracts preferences then invokes the graph."""
+    import time, json, tempfile
+    import mlflow
+
     logger = logging.getLogger(session_id)
-    try:
-        _trip_results[session_id]["status"] = "extracting"
-        prefs_state = chat.extract()
+    mlflow.set_experiment("trip-planner-v3")
 
-        _trip_results[session_id]["status"] = "planning"
+    with mlflow.start_run(run_name=session_id):
+        try:
+            _trip_results[session_id]["status"] = "extracting"
+            prefs_state = chat.extract()
 
-        # Import here so load_dotenv() runs before any agent-level module init
-        from main import build_graph
-        from memory.memory_store import save as save_memory
+            _trip_results[session_id]["status"] = "planning"
 
-        os.makedirs("logs", exist_ok=True)
-        os.makedirs("checkpoints", exist_ok=True)
-        fh = logging.FileHandler(f"logs/session_{session_id}.log", encoding="utf-8")
-        fh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)-5s %(message)s", "%H:%M:%S"))
-        logger.addHandler(fh)
-        logger.setLevel(logging.INFO)
+            from main import build_graph
+            from memory.memory_store import save as save_memory
 
-        graph = build_graph()
+            os.makedirs("logs", exist_ok=True)
+            os.makedirs("checkpoints", exist_ok=True)
+            fh = logging.FileHandler(f"logs/session_{session_id}.log", encoding="utf-8")
+            fh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)-5s %(message)s", "%H:%M:%S"))
+            logger.addHandler(fh)
+            logger.setLevel(logging.INFO)
 
-        initial_state = {
-            "session_id":        session_id,
-            "checkpoint_path":   f"checkpoints/trip_{session_id}.db",
-            "log_path":          f"logs/session_{session_id}.log",
-            "cache_hits":        {},
-            "retry_count":       0,
-            "hitl_change_count": 0,
-            "budget_gate_round": 0,
-            "budget_revisions":  [],
-            "failed_agents":     [],
-            "api_status":        {},
-            **prefs_state,
-        }
-        config = {"configurable": {"thread_id": session_id}, "recursion_limit": 50}
-        final_state = graph.invoke(initial_state, config=config)
+            # ── Log input params ──────────────────────────────────────────────
+            prefs = prefs_state.get("trip_preferences", {})
+            mlflow.log_params({
+                "session_id":    session_id,
+                "source":        prefs.get("source", ""),
+                "destination":   prefs.get("destination", ""),
+                "start_date":    prefs.get("start_date", ""),
+                "end_date":      prefs.get("end_date", ""),
+                "travelers":     prefs.get("travelers", 0),
+                "travel_type":   prefs.get("travel_type", ""),
+                "hotel_pref":    prefs.get("hotel_pref", ""),
+                "transport_pref": prefs.get("transport_pref", ""),
+                "budget_inr":    prefs.get("budget", 0),
+            })
 
-        # Persist to user memory
-        user_id = final_state.get("user_profile", {}).get("user_id", "guest")
-        prefs   = final_state.get("trip_preferences", {})
-        itin    = final_state.get("itinerary", {})
-        if user_id and prefs.get("destination"):
-            try:
-                save_memory(user_id, prefs, itin)
-            except Exception as mem_err:
-                logger.warning(f"Memory save failed: {mem_err}")
+            graph = build_graph()
+            initial_state = {
+                "session_id":        session_id,
+                "checkpoint_path":   f"checkpoints/trip_{session_id}.db",
+                "log_path":          f"logs/session_{session_id}.log",
+                "cache_hits":        {},
+                "retry_count":       0,
+                "hitl_change_count": 0,
+                "budget_gate_round": 0,
+                "budget_revisions":  [],
+                "failed_agents":     [],
+                "api_status":        {},
+                **prefs_state,
+            }
+            config = {"configurable": {"thread_id": session_id}, "recursion_limit": 50}
 
-        _trip_results[session_id] = {
-            "status":                "complete",
-            "session_id":            session_id,
-            "trip_preferences":      final_state.get("trip_preferences", {}),
-            "itinerary":             final_state.get("itinerary", {}),
-            "budget_summary":        final_state.get("budget_summary", {}),
-            "review_status":         final_state.get("review_status", {}),
-            "weather_data":          final_state.get("weather_data", {}),
-            "transport_data":        final_state.get("transport_data", {}),
-            "hotel_data":            final_state.get("hotel_data", {}),
-            "coordinates":           final_state.get("coordinates", {}),
-            "pdf_path":              final_state.get("pdf_path"),
-            "whatsapp_summary_path": final_state.get("whatsapp_summary_path"),
-        }
-        logger.info("SESSION COMPLETE")
+            t0 = time.time()
+            final_state = graph.invoke(initial_state, config=config)
+            duration_s  = round(time.time() - t0, 1)
 
-    except Exception as exc:
-        logger.error(f"Planning failed: {exc}", exc_info=True)
-        _trip_results[session_id] = {"status": "failed", "error": str(exc)}
+            # ── Log output metrics ────────────────────────────────────────────
+            review  = final_state.get("review_status", {})
+            budget  = final_state.get("budget_summary", {})
+            evals   = final_state.get("eval_scores", {})
+            weather = final_state.get("weather_data", {})
+
+            mlflow.log_metrics({
+                "planning_duration_s":    duration_s,
+                "review_score":           float(review.get("score") or 0),
+                "budget_inr":             float(prefs.get("budget") or 0),
+                "budget_estimate_inr":    float(budget.get("total_estimate") or 0),
+                "budget_surplus_inr":     float(budget.get("surplus_deficit") or 0),
+                "weather_score":          float(weather.get("score") or 0),
+                "hitl_change_count":      float(final_state.get("hitl_change_count") or 0),
+                "retry_count":            float(final_state.get("retry_count") or 0),
+                "pacing_score":           float(evals.get("pacing") or 0),
+                "variety_score":          float(evals.get("variety") or 0),
+                "preference_alignment":   float(evals.get("preference_alignment") or 0),
+                "distance_vs_budget":     float(evals.get("distance_vs_budget") or 0),
+                "days_planned":           float(len(final_state.get("itinerary", {}).get("days", []))),
+                "cache_hits_geocode":     float(final_state.get("cache_hits", {}).get("geocode", False)),
+                "cache_hits_weather":     float(final_state.get("cache_hits", {}).get("weather", False)),
+            })
+
+            mlflow.set_tags({
+                "verdict":        review.get("overall_verdict", ""),
+                "transport_mode": final_state.get("transport_data", {}).get("final_mode", ""),
+                "hotel_name":     (final_state.get("hotel_data", {}).get("recommended") or {}).get("name", ""),
+                "within_budget":  str(budget.get("within_budget", "")),
+                "failed_agents":  ",".join(final_state.get("failed_agents", [])),
+            })
+
+            # ── Log itinerary as artifact ─────────────────────────────────────
+            itin = final_state.get("itinerary", {})
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".json",
+                                             delete=False, encoding="utf-8") as f:
+                json.dump(itin, f, indent=2)
+                tmp_path = f.name
+            mlflow.log_artifact(tmp_path, artifact_path="itinerary")
+            os.unlink(tmp_path)
+
+            # ── Persist to user memory ────────────────────────────────────────
+            user_id = final_state.get("user_profile", {}).get("user_id", "guest")
+            if user_id and prefs.get("destination"):
+                try:
+                    save_memory(user_id, prefs, itin)
+                except Exception as mem_err:
+                    logger.warning(f"Memory save failed: {mem_err}")
+
+            _trip_results[session_id] = {
+                "status":                "complete",
+                "session_id":            session_id,
+                "trip_preferences":      final_state.get("trip_preferences", {}),
+                "itinerary":             itin,
+                "budget_summary":        budget,
+                "review_status":         review,
+                "weather_data":          weather,
+                "transport_data":        final_state.get("transport_data", {}),
+                "hotel_data":            final_state.get("hotel_data", {}),
+                "coordinates":           final_state.get("coordinates", {}),
+                "pdf_path":              final_state.get("pdf_path"),
+                "whatsapp_summary_path": final_state.get("whatsapp_summary_path"),
+                "mlflow_run_id":         mlflow.active_run().info.run_id,
+            }
+            logger.info(f"SESSION COMPLETE  duration={duration_s}s  review={review.get('score')}/10")
+
+        except Exception as exc:
+            mlflow.set_tag("error", str(exc))
+            logger.error(f"Planning failed: {exc}", exc_info=True)
+            _trip_results[session_id] = {"status": "failed", "error": str(exc)}
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
