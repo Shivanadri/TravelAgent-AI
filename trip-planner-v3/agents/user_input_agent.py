@@ -237,6 +237,146 @@ def _resolve_and_validate_locations(source: str, destination: str) -> tuple[dict
     return src_data, dest_data, distance_km
 
 
+# ── Web API helper ─────────────────────────────────────────────────────────────
+
+class UserInputChat:
+    """
+    Stateful conversation session for the web API.
+    One instance per session; call start() to get the first question, then
+    reply(user_message) for each subsequent turn.  When ready is True, call
+    extract() to get the TripState-compatible dict.
+    """
+
+    def __init__(self):
+        self._llm, self._extract_llm = _get_llms()
+        self.history: list = [SystemMessage(content=SYSTEM_PROMPT)]
+        self.conversation_text = ""
+        self.coord_injected = False
+        self.ready = False
+
+    def start(self) -> str:
+        """Return the first AI question (no user message yet)."""
+        reply = self._call_llm()
+        reply = _trim_to_single_question(reply)
+        self.history.append(AIMessage(content=reply))
+        self.conversation_text += f"Assistant: {reply}\n"
+        if "[READY_TO_PLAN]" in reply:
+            self.ready = True
+        return reply
+
+    def reply(self, user_message: str) -> str:
+        """Process one user message and return the next AI question."""
+        if self.ready:
+            raise RuntimeError("Conversation already complete — call extract().")
+        self.conversation_text += f"User: {user_message}\n"
+        self.history.append(HumanMessage(content=user_message))
+
+        if not self.coord_injected:
+            src, dest = _try_extract_src_dest(self.conversation_text, self._llm)
+            if src and dest:
+                self.coord_injected = True
+                try:
+                    sd, dd, dist = _resolve_and_validate_locations(src, dest)
+                    verdict = "same location, re-ask destination" if dist < 10 else "different locations, proceed"
+                    coord_msg = (
+                        f"[COORD_CHECK: source='{sd['display_name']}' "
+                        f"({sd['lat']:.4f},{sd['lon']:.4f}), "
+                        f"dest='{dd['display_name']}' "
+                        f"({dd['lat']:.4f},{dd['lon']:.4f}), "
+                        f"distance={dist:.1f}km — {verdict}]"
+                    )
+                    self.history.append(HumanMessage(content=coord_msg))
+                    self.conversation_text += f"System: {coord_msg}\n"
+                except Exception:
+                    pass
+
+        ai_reply = self._call_llm()
+        ai_reply = _trim_to_single_question(ai_reply)
+        self.history.append(AIMessage(content=ai_reply))
+        self.conversation_text += f"Assistant: {ai_reply}\n"
+        if "[READY_TO_PLAN]" in ai_reply:
+            self.ready = True
+        return ai_reply
+
+    def extract(self) -> dict:
+        """Extract structured preferences and return a TripState-compatible dict."""
+        prefs: TripPreferences = None
+        for attempt in range(3):
+            prefs = self._extract_llm.invoke([
+                HumanMessage(content=EXTRACT_PROMPT.format(conversation=self.conversation_text))
+            ])
+            if prefs is not None:
+                break
+
+        if prefs is None:
+            raise RuntimeError("Failed to extract trip preferences after 3 attempts.")
+
+        try:
+            src_data, dest_data, distance_km = _resolve_and_validate_locations(
+                prefs.source, prefs.destination
+            )
+        except ValueError:
+            src_data = dest_data = None
+            distance_km = 0.0
+
+        coords = {}
+        if src_data and dest_data:
+            coords = {
+                "source_lat":  src_data["lat"],
+                "source_lon":  src_data["lon"],
+                "dest_lat":    dest_data["lat"],
+                "dest_lon":    dest_data["lon"],
+                "source_name": src_data["display_name"],
+                "dest_name":   dest_data["display_name"],
+                "distance_km": round(distance_km, 1),
+            }
+
+        return {
+            "user_profile": {
+                "user_id":   prefs.user_id,
+                "user_name": prefs.user_name,
+            },
+            "trip_preferences": {
+                "source":           prefs.source,
+                "destination":      prefs.destination,
+                "start_date":       prefs.start_date,
+                "end_date":         prefs.end_date,
+                "budget":           prefs.budget,
+                "travelers":        prefs.travelers,
+                "travel_type":      prefs.travel_type,
+                "hotel_pref":       prefs.hotel_pref,
+                "food_pref":        prefs.food_pref,
+                "transport_pref":   prefs.transport_pref,
+                "special_requests": prefs.special_requests,
+            },
+            "coordinates": coords,
+            "last_completed_node": "user_input_agent",
+        }
+
+    def _call_llm(self) -> str:
+        for attempt in range(1, 4):
+            try:
+                return self._llm.invoke(self.history).content
+            except OpenAIRateLimitError as e:
+                if attempt == 3:
+                    raise
+                retry_after = 30
+                try:
+                    retry_after = int(e.body["error"]["metadata"].get("retry_after_seconds", 30))
+                except Exception:
+                    pass
+                time.sleep(retry_after)
+            except OpenAIStatusError as e:
+                if e.status_code == 402:
+                    raise RuntimeError("Insufficient OpenRouter credits.")
+                raise
+            except (OpenAIConnectionError, httpx.ConnectError, httpx.TimeoutException) as e:
+                if attempt == 3:
+                    raise
+                time.sleep(2 ** attempt)
+        raise RuntimeError("LLM call failed after 3 attempts.")
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def run_user_input_agent(state: dict) -> dict:

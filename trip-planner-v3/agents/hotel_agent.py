@@ -5,6 +5,13 @@ from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
+
+def _safe_input(prompt: str, default: str = "") -> str:
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return default
+
 _http = httpx.Client(verify=False)
 _http_async = httpx.AsyncClient(verify=False)
 _llm = None
@@ -132,7 +139,7 @@ Suggest 3 hotels matching this trip.
             print(f"      • {hl}")
         print(f"      ► {h.why_good}\n")
 
-    raw = input(f"  Your choice (1-{len(options)}) or Enter for recommended: ").strip()
+    raw = _safe_input(f"  Your choice (1-{len(options)}) or Enter for recommended: ")
     try:
         idx = int(raw) - 1
         if idx < 0 or idx >= len(options):

@@ -59,6 +59,10 @@ def _setup_logger(session_id: str) -> logging.Logger:
 # ── Node wrappers ──────────────────────────────────────────────────────────────
 
 def user_input_node(state: TripState) -> dict:
+    # Skip interactive collection when preferences are pre-supplied (API mode)
+    if state.get("trip_preferences", {}).get("destination"):
+        update_status("user_input", "done", "api")
+        return {"last_completed_node": "user_input_agent"}
     update_status("user_input", "running")
     logger = logging.getLogger(state.get("session_id", ""))
     logger.info("user_input_agent START")
@@ -396,7 +400,10 @@ def _pick_or_create_session() -> str:
         for i, s in enumerate(incomplete, 1):
             console.print(f"  [{i}] Resume session {s['session_id']}")
         console.print("  [N] Start new session")
-        choice = input("\nYour choice: ").strip().upper()
+        try:
+            choice = input("\nYour choice: ").strip().upper()
+        except EOFError:
+            choice = "N"
         if choice.isdigit() and 1 <= int(choice) <= len(incomplete):
             return incomplete[int(choice) - 1]["session_id"]
     return str(uuid.uuid4())

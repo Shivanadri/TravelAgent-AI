@@ -5,6 +5,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from api_clients.weather_client import get_forecast
 
+
+def _safe_input(prompt: str, default: str = "1") -> str:
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return default
+
 _http = httpx.Client(verify=False)
 _http_async = httpx.AsyncClient(verify=False)
 _llm = None
@@ -120,7 +127,7 @@ def _gate0_weather_hitl(state: dict, score: int, summary: str, concerns: list) -
     print("  [1] Keep original destination and proceed")
     print("  [2] See alternative destinations with better weather")
 
-    choice = input("\n  Your choice (1/2): ").strip()
+    choice = _safe_input("\n  Your choice (1/2): ")
 
     if choice != "2":
         print("\n  Proceeding with original destination.\n")
@@ -158,7 +165,7 @@ Suggest 2-3 alternative destinations.
         print(f"      Why: {alt.get('reason')}\n")
     print(f"  [{len(alts)+1}] Keep original — {prefs.get('destination')}")
 
-    pick = input(f"  Your choice (1-{len(alts)+1}): ").strip()
+    pick = _safe_input(f"  Your choice (1-{len(alts)+1}): ", default=str(len(alts) + 1))
     try:
         idx = int(pick) - 1
     except ValueError:

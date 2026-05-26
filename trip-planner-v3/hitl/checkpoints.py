@@ -5,6 +5,14 @@ Each gate receives the full state dict and returns a partial state update.
 """
 
 
+def _safe_input(prompt: str, default: str = "1") -> str:
+    """Return user input, or the default when stdin is not interactive (e.g. Render)."""
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return default
+
+
 # ── Gate 1: Confirm trip details ───────────────────────────────────────────────
 
 def run_gate1_confirm(state: dict) -> dict:
@@ -27,10 +35,10 @@ def run_gate1_confirm(state: dict) -> dict:
     print("  [3] Change dates")
     print("  [4] Change budget")
 
-    choice = input("\n  Your choice (1/2/3/4): ").strip()
+    choice = _safe_input("\n  Your choice (1/2/3/4): ")
 
     if choice == "2":
-        new_dest = input("  New destination: ").strip()
+        new_dest = _safe_input("  New destination: ", default="")
         if new_dest:
             print(f"\n  ✓ Destination changed to {new_dest}\n")
             return {
@@ -42,8 +50,8 @@ def run_gate1_confirm(state: dict) -> dict:
             }
 
     if choice == "3":
-        start = input("  New start date (YYYY-MM-DD): ").strip()
-        end   = input("  New end date   (YYYY-MM-DD): ").strip()
+        start = _safe_input("  New start date (YYYY-MM-DD): ", default="")
+        end   = _safe_input("  New end date   (YYYY-MM-DD): ", default="")
         if start and end:
             print(f"\n  ✓ Dates changed to {start} → {end}\n")
             return {
@@ -55,7 +63,7 @@ def run_gate1_confirm(state: dict) -> dict:
             }
 
     if choice == "4":
-        raw = input("  New budget (INR): ").strip()
+        raw = _safe_input("  New budget (INR): ", default="")
         try:
             new_budget = int(raw.replace(",", ""))
             print(f"\n  ✓ Budget changed to Rs.{new_budget:,}\n")
@@ -113,21 +121,21 @@ def run_gate2_places(state: dict) -> dict:
     print("  [2] Add a place I want to visit")
     print("  [3] Remove a place")
 
-    choice = input("\n  Your choice (1/2/3): ").strip()
+    choice = _safe_input("\n  Your choice (1/2/3): ")
 
     user_added   = []
     user_removed = []
 
     if choice == "2":
         while True:
-            extra = input("  Place to add (or Enter to finish): ").strip()
+            extra = _safe_input("  Place to add (or Enter to finish): ", default="")
             if not extra:
                 break
             user_added.append({"name": extra, "description": "User requested",
                                 "entry_fee_inr": 0, "duration_hours": 1.0, "best_time": "Anytime"})
 
     elif choice == "3":
-        remove = input("  Name of place to remove: ").strip()
+        remove = _safe_input("  Name of place to remove: ", default="")
         if remove:
             user_removed.append(remove)
             rl = remove.lower()
@@ -190,7 +198,7 @@ def run_gate3_budget(state: dict) -> dict:
         print("  [2] Switch transport option")
         print("  [3] Switch hotel option")
 
-    choice = input(f"\n  Your choice (1{'/2/3' if can_revise else ''}): ").strip()
+    choice = _safe_input(f"\n  Your choice (1{'/2/3' if can_revise else ''}): ")
 
     if choice == "2" and can_revise:
         all_opts = transport.get("all_options", [])
@@ -198,7 +206,7 @@ def run_gate3_budget(state: dict) -> dict:
             print("\n  Transport options:")
             for i, opt in enumerate(all_opts, 1):
                 print(f"    [{i}] {opt.get('mode','?').upper()} — Rs.{opt.get('cost_per_person_inr', 0):,}/person | {opt.get('description', '')}")
-            raw = input(f"  Choose (1-{len(all_opts)}): ").strip()
+            raw = _safe_input(f"  Choose (1-{len(all_opts)}): ")
             try:
                 chosen = all_opts[int(raw) - 1]
                 new_transport_total = chosen.get("cost_per_person_inr", 0) * travelers
@@ -235,7 +243,7 @@ def run_gate3_budget(state: dict) -> dict:
             for i, h in enumerate(all_hotels, 1):
                 total = h.get("price_per_night_inr", 0) * nights
                 print(f"    [{i}] {h.get('name','?')} — Rs.{h.get('price_per_night_inr', 0):,}/night (Rs.{total:,} total)")
-            raw = input(f"  Choose (1-{len(all_hotels)}): ").strip()
+            raw = _safe_input(f"  Choose (1-{len(all_hotels)}): ")
             try:
                 chosen        = all_hotels[int(raw) - 1]
                 new_hotel_cost = chosen.get("price_per_night_inr", 0) * nights * rooms
@@ -298,10 +306,10 @@ def run_gate4_plan(state: dict) -> dict:
     print("\n  [1] Approve — generate output files")
     print("  [2] Request changes (itinerary will be regenerated)")
 
-    choice = input("\n  Your choice (1/2): ").strip()
+    choice = _safe_input("\n  Your choice (1/2): ")
 
     if choice == "2":
-        feedback = input("  Describe the changes you want: ").strip()
+        feedback = _safe_input("  Describe the changes you want: ", default="")
         print(f"\n  ✓ Changes noted. Regenerating itinerary...\n")
         return {
             "hitl_approved":     False,
@@ -336,7 +344,7 @@ def run_gate5_pdf(state: dict) -> dict:
     print("  [2] WhatsApp summary only (skip PDF)")
     print("  [3] Skip — don't generate anything")
 
-    choice = input("\n  Your choice (1/2/3): ").strip()
+    choice = _safe_input("\n  Your choice (1/2/3): ")
 
     if choice == "3":
         print("\n  Output generation skipped.\n")
