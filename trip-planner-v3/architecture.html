@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multi-Agent Trip Planner v3 — Full Architecture</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', sans-serif; background: #0a0e1a; color: #e2e8f0; min-height: 100vh; }
+
+/* ── Header ── */
+.header { background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%); border-bottom: 2px solid #1e2d4a; padding: 28px 40px; text-align: center; }
+.header h1 { font-size: 28px; font-weight: 800; background: linear-gradient(90deg, #60a5fa, #a78bfa, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 1px; }
+.header p { font-size: 13px; color: #94a3b8; margin-top: 6px; }
+.badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.badge { padding: 3px 11px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; }
+.badge-blue   { background:#1e3a8a; color:#93c5fd; }
+.badge-purple { background:#4c1d95; color:#c4b5fd; }
+.badge-green  { background:#064e3b; color:#6ee7b7; }
+.badge-orange { background:#7c2d12; color:#fed7aa; }
+.badge-red    { background:#7f1d1d; color:#fca5a5; }
+.badge-teal   { background:#134e4a; color:#99f6e4; }
+.badge-yellow { background:#713f12; color:#fef08a; }
+
+/* ── Tabs ── */
+.tabs { display:flex; justify-content:center; gap:5px; padding:16px 40px 0; flex-wrap:wrap; background:#0a0e1a; position:sticky; top:0; z-index:100; border-bottom:2px solid #1e2d4a; }
+.tab { padding:9px 18px; border-radius:8px 8px 0 0; cursor:pointer; font-size:12px; font-weight:600; border:1px solid #1e2d4a; border-bottom:none; background:#111827; color:#6b7280; transition:all 0.2s; }
+.tab:hover  { background:#1e2d4a; color:#e2e8f0; }
+.tab.active { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
+.tab-content { display:none; padding:28px 40px 60px; max-width:1400px; margin:0 auto; }
+.tab-content.active { display:block; }
+
+/* ── Section titles ── */
+.section-title { font-size:18px; font-weight:700; color:#60a5fa; border-left:4px solid #1d4ed8; padding-left:12px; margin:32px 0 16px; }
+.section-title:first-child { margin-top:0; }
+.sub-title { font-size:14px; font-weight:700; color:#94a3b8; margin:20px 0 10px; }
+
+/* ── Legend ── */
+.legend { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:24px; padding:14px 18px; background:#111827; border-radius:10px; border:1px solid #1e2d4a; }
+.legend-item { display:flex; align-items:center; gap:7px; font-size:11px; color:#94a3b8; }
+.legend-dot { width:14px; height:14px; border-radius:3px; flex-shrink:0; }
+
+/* ── Flow nodes ── */
+.flow-col { display:flex; flex-direction:column; gap:0; align-items:center; }
+.node { border-radius:10px; padding:10px 16px; margin:0 auto 3px; text-align:center; font-size:12px; font-weight:600; width:260px; border:2px solid transparent; transition:transform 0.15s; cursor:default; }
+.node:hover { transform:scale(1.02); }
+.node .node-label { font-size:10px; font-weight:400; margin-top:3px; opacity:0.8; }
+.node .api-tag { display:inline-block; font-size:9px; font-weight:700; padding:1px 7px; border-radius:8px; margin-top:4px; background:#0f2544; color:#60a5fa; border:1px solid #1e3a8a; }
+
+.node-start        { background:#0f2544; border-color:#1d4ed8; color:#93c5fd; }
+.node-end          { background:#0f2544; border-color:#059669; color:#6ee7b7; }
+.node-orchestrator { background:#2d1b69; border-color:#7c3aed; color:#c4b5fd; width:300px; }
+.node-agent        { background:#0c2340; border-color:#1d4ed8; color:#bfdbfe; }
+.node-api          { background:#0a1f0a; border-color:#059669; color:#6ee7b7; width:240px; }
+.node-hitl         { background:#431407; border-color:#ea580c; color:#fed7aa; width:280px; }
+.node-guardrail    { background:#450a0a; border-color:#dc2626; color:#fca5a5; width:240px; }
+.node-evaluation   { background:#3b0764; border-color:#9333ea; color:#e9d5ff; width:240px; }
+.node-memory       { background:#052e16; border-color:#059669; color:#6ee7b7; }
+.node-pdf          { background:#1c1917; border-color:#d97706; color:#fcd34d; }
+.node-fallback     { background:#111827; border-color:#4b5563; color:#9ca3af; font-style:italic; width:200px; font-size:10px; }
+
+.arrow-down  { text-align:center; color:#374151; font-size:18px; line-height:1; margin:2px 0; }
+.arrow-label { font-size:9px; color:#4b5563; background:#111827; padding:1px 7px; border-radius:8px; display:inline-block; }
+
+.branch-row  { display:flex; justify-content:center; gap:18px; align-items:flex-start; margin:6px 0; }
+.branch-col  { display:flex; flex-direction:column; align-items:center; }
+.branch-label { font-size:10px; font-weight:700; color:#6b7280; margin-bottom:4px; padding:2px 9px; border-radius:8px; border:1px solid #374151; }
+.branch-label.yes     { color:#34d399; border-color:#059669; }
+.branch-label.no      { color:#f87171; border-color:#dc2626; }
+.branch-label.retry   { color:#fb923c; border-color:#ea580c; }
+.branch-label.fallback{ color:#9ca3af; border-color:#4b5563; }
+
+.parallel-box { border:2px dashed #1e3a8a; border-radius:12px; padding:14px 16px; margin:6px 0; background:#0a1628; }
+.parallel-label { font-size:11px; color:#3b82f6; font-weight:700; text-align:center; margin-bottom:10px; }
+.parallel-grid  { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+
+.hitl-box { border:2px solid #ea580c; border-radius:12px; padding:14px 20px; background:#1c0a04; margin:6px auto; max-width:680px; }
+.hitl-box-title { color:#fb923c; font-size:11px; font-weight:800; text-align:center; margin-bottom:8px; letter-spacing:1px; }
+.hitl-options   { display:flex; gap:10px; justify-content:center; }
+.hitl-opt       { font-size:10px; padding:4px 10px; border-radius:6px; }
+.hitl-opt.approve { background:#052e16; color:#34d399; border:1px solid #059669; }
+.hitl-opt.change  { background:#431407; color:#fb923c; border:1px solid #ea580c; }
+.hitl-opt.cancel  { background:#1f2937; color:#9ca3af; border:1px solid #4b5563; }
+
+.guardrail-box { border:2px solid #dc2626; border-radius:12px; padding:12px 18px; background:#1f0606; margin:6px auto; max-width:580px; }
+.guardrail-title { color:#f87171; font-size:10px; font-weight:800; text-align:center; margin-bottom:7px; letter-spacing:1px; }
+.guardrail-checks { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+.guardrail-check  { font-size:9px; padding:2px 9px; background:#300a0a; color:#fca5a5; border-radius:10px; border:1px solid #7f1d1d; }
+
+.eval-box { border:2px solid #9333ea; border-radius:12px; padding:12px 18px; background:#1a0533; margin:6px auto; max-width:580px; }
+.eval-title   { color:#c084fc; font-size:10px; font-weight:800; text-align:center; margin-bottom:7px; letter-spacing:1px; }
+.eval-metrics { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+.eval-metric  { font-size:9px; padding:2px 9px; background:#250845; color:#e9d5ff; border-radius:10px; border:1px solid #6b21a8; }
+
+/* ── Cards ── */
+.cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; margin-top:10px; }
+.card { background:#111827; border:1px solid #1e2d4a; border-radius:10px; padding:16px 18px; transition:border-color 0.2s; }
+.card:hover { border-color:#2563eb; }
+.card-header { display:flex; align-items:center; gap:9px; margin-bottom:9px; }
+.card-icon   { font-size:20px; }
+.card-title  { font-size:13px; font-weight:700; color:#e2e8f0; }
+.card-subtitle { font-size:10px; color:#4b5563; margin-top:1px; }
+.card-body   { font-size:11px; color:#9ca3af; line-height:1.6; }
+.card-tag    { display:inline-block; padding:2px 7px; border-radius:8px; font-size:9px; font-weight:700; margin-top:7px; margin-right:4px; }
+.tag-blue   { background:#1e3a8a; color:#93c5fd; }
+.tag-green  { background:#064e3b; color:#6ee7b7; }
+.tag-orange { background:#7c2d12; color:#fed7aa; }
+.tag-red    { background:#7f1d1d; color:#fca5a5; }
+.tag-purple { background:#4c1d95; color:#c4b5fd; }
+.tag-yellow { background:#713f12; color:#fef08a; }
+
+/* ── API Integration cards ── */
+.api-card { background:#0a1628; border:1px solid #1e3a8a; border-radius:10px; padding:18px 20px; margin-bottom:12px; }
+.api-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.api-card-title  { font-size:15px; font-weight:700; color:#60a5fa; }
+.api-free  { background:#052e16; color:#34d399; font-size:10px; font-weight:700; padding:3px 10px; border-radius:12px; border:1px solid #059669; }
+.api-paid  { background:#713f12; color:#fef08a; font-size:10px; font-weight:700; padding:3px 10px; border-radius:12px; border:1px solid #d97706; }
+.api-detail { display:grid; grid-template-columns:140px 1fr; gap:6px 16px; font-size:11px; }
+.api-key   { color:#94a3b8; }
+.api-val   { color:#e2e8f0; }
+.api-endpoint { font-family:monospace; font-size:10px; background:#0d1117; padding:3px 8px; border-radius:6px; color:#34d399; border:1px solid #1e2d4a; display:inline-block; margin-top:4px; word-break:break-all; }
+.api-response-box { background:#0d1117; border:1px solid #1e2d4a; border-radius:8px; padding:12px; margin-top:10px; font-family:monospace; font-size:10px; color:#a3e635; line-height:1.6; overflow-x:auto; }
+
+/* ── Tables ── */
+table { width:100%; border-collapse:collapse; font-size:12px; }
+th { background:#1e2d4a; color:#93c5fd; padding:9px 12px; text-align:left; font-size:10px; letter-spacing:0.5px; }
+td { padding:8px 12px; border-bottom:1px solid #1a2440; color:#cbd5e1; vertical-align:top; }
+tr:hover td { background:#0f172a; }
+.td-badge { display:inline-block; padding:2px 7px; border-radius:6px; font-size:9px; font-weight:700; }
+code { background:#0d1117; padding:1px 6px; border-radius:4px; font-size:11px; color:#34d399; font-family:monospace; }
+
+/* ── Tree ── */
+.tree { font-family:'Cascadia Code','Consolas',monospace; font-size:12px; line-height:1.8; background:#0d1117; padding:22px; border-radius:10px; border:1px solid #1e2d4a; overflow-x:auto; }
+.tree-folder  { color:#60a5fa; font-weight:700; }
+.tree-file    { color:#e2e8f0; }
+.tree-comment { color:#4b5563; font-style:italic; }
+.tree-new     { color:#34d399; font-weight:600; }
+.tree-api     { color:#fbbf24; font-weight:600; }
+
+/* ── Env box ── */
+.env-box { background:#0d1117; border:1px solid #1e2d4a; border-radius:10px; padding:18px 22px; font-family:monospace; font-size:12px; line-height:2; }
+.env-comment { color:#4b5563; }
+.env-key     { color:#60a5fa; }
+.env-val     { color:#34d399; }
+.env-section { color:#a78bfa; font-weight:700; }
+
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:#0a0e1a; }
+::-webkit-scrollbar-thumb { background:#1e2d4a; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Multi-Agent Trip Planner v3 — Real Live Data</h1>
+  <p>LangGraph · OpenRouter LLM · Real APIs for Weather, Flights, Trains, Hotels &amp; Places</p>
+  <div class="badges">
+    <span class="badge badge-blue">LangGraph</span>
+    <span class="badge badge-purple">OpenRouter LLM</span>
+    <span class="badge badge-green">OpenWeatherMap API</span>
+    <span class="badge badge-green">Amadeus Flight + Hotel API</span>
+    <span class="badge badge-yellow">RapidAPI Indian Railways</span>
+    <span class="badge badge-teal">Foursquare Places API</span>
+    <span class="badge badge-orange">6 HITL Gates</span>
+    <span class="badge badge-red">Guardrails + Evaluations</span>
+    <span class="badge badge-green">File Memory</span>
+    <span class="badge badge-teal">API Cache + Rich UI</span>
+    <span class="badge badge-purple">WhatsApp Export + Session Log</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active"  onclick="showTab('flow')">System Flow</div>
+  <div class="tab"         onclick="showTab('apis')">🔌 API Integrations</div>
+  <div class="tab"         onclick="showTab('structure')">Project Structure</div>
+  <div class="tab"         onclick="showTab('agents')">Agent Designs</div>
+  <div class="tab"         onclick="showTab('guardrails')">Guardrails</div>
+  <div class="tab"         onclick="showTab('evaluations')">Evaluations</div>
+  <div class="tab"         onclick="showTab('fallback')">Fallback</div>
+  <div class="tab"         onclick="showTab('hitl')">HITL Design</div>
+  <div class="tab"         onclick="showTab('state')">State Schema</div>
+  <div class="tab"         onclick="showTab('enhancements')">✨ Enhancements</div>
+  <div class="tab"         onclick="showTab('setup')">⚙ Setup Guide</div>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: FLOW ═══ -->
+<div id="tab-flow" class="tab-content active">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#1d4ed8"></div> Agent Node</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#059669"></div> Live API Call</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div> Orchestrator</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ea580c"></div> HITL Gate</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Guardrail</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#9333ea"></div> Evaluation</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d97706"></div> PDF Output</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#4b5563; border:1px dashed #9ca3af"></div> Fallback Path</div>
+  </div>
+
+  <div class="flow-col">
+
+    <div class="node node-start">🚀 START<div class="node-label">User launches trip planner · session_id generated · SqliteSaver checkpointer attached</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div style="text-align:center;margin:2px 0">
+      <span style="display:inline-block;background:#0c2212;border:1px dashed #22c55e;border-radius:8px;padding:4px 16px;font-size:10px;color:#4ade80">
+        💾 CHECKPOINT DB: <code>checkpoints/trip_{session_id}.db</code> — every node auto-saved by SqliteSaver
+      </span>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <div class="guardrail-box">
+      <div class="guardrail-title">🛡 GUARDRAIL 1 — Input Validation</div>
+      <div class="guardrail-checks">
+        <span class="guardrail-check">dates: start &lt; end, not in past</span>
+        <span class="guardrail-check">budget ≥ Rs.5,000</span>
+        <span class="guardrail-check">travelers 1–50</span>
+        <span class="guardrail-check">destination non-empty</span>
+        <span class="guardrail-check">travel_type in allowed list</span>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-agent">🗣 Agent 1 — User Input Agent<div class="node-label">OpenRouter LLM conversation → structured trip preferences</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-memory">🧠 Agent 2 — Memory Agent<div class="node-label">Load past trips &amp; preferences from user_memories/&lt;id&gt;.json</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div class="hitl-box">
+      <div class="hitl-box-title">⛔ HITL GATE 1 — Confirm Trip Details</div>
+      <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:7px;">
+        Show collected preferences + memory recall. User confirms or corrects before any API calls.
+      </div>
+      <div class="hitl-options">
+        <span class="hitl-opt approve">✓ Confirm &amp; Continue</span>
+        <span class="hitl-opt change">✏ Modify Details</span>
+        <span class="hitl-opt cancel">✕ Start Over</span>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <!-- GEOCODING -->
+    <div class="node node-api">🌐 Geocoding API Call<div class="node-label">OWM Geocoding: City name → Lat / Long for source &amp; destination</div><span class="api-tag">api.openweathermap.org/geo/1.0/direct</span></div>
+    <div style="text-align:center;margin:2px 0"><span style="display:inline-block;background:#0c1a0c;border:1px dashed #4ade80;border-radius:6px;padding:2px 12px;font-size:9px;color:#4ade80">💾 cache/geocode_{city}.json — TTL 7 days · skips API if fresh</span></div>
+    <div class="arrow-down">▼</div>
+
+    <!-- WEATHER CHECK — EARLY, before orchestrator -->
+    <div class="node node-agent">🌤 Agent 3 — Weather Agent<div class="node-label">OWM 5-day forecast for destination during travel dates · Score 1–10 · Flag concerns</div><span class="api-tag">api.openweathermap.org/data/2.5/forecast</span></div>
+    <div style="text-align:center;margin:2px 0"><span style="display:inline-block;background:#0c1a0c;border:1px dashed #4ade80;border-radius:6px;padding:2px 12px;font-size:9px;color:#4ade80">💾 cache/weather_{dest}_{date}.json — TTL 1 hour</span></div>
+    <div class="arrow-down">▼</div>
+
+    <!-- WEATHER DECISION BRANCH -->
+    <div class="branch-row" style="margin:4px 0">
+      <div class="branch-col">
+        <span class="branch-label yes">✓ GOOD WEATHER</span>
+        <div class="arrow-down">▼</div>
+        <div class="node node-agent" style="width:200px;font-size:10px">Proceed to Orchestrator</div>
+      </div>
+      <div class="branch-col">
+        <span class="branch-label no" style="color:#fb923c;border-color:#ea580c">⚠ BAD WEATHER</span>
+        <div class="arrow-down">▼</div>
+        <!-- HITL WEATHER GATE -->
+        <div class="hitl-box" style="margin:4px 0;width:300px">
+          <div class="hitl-box-title">⛔ HITL GATE 0 — Weather Advisory</div>
+          <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:7px;">
+            LLM suggests 2–3 similar destinations with better weather<br>
+            <em style="color:#fb923c">e.g. Goa in monsoon → Andaman · Kovalam · Varkala</em>
+          </div>
+          <div class="hitl-options">
+            <span class="hitl-opt approve">✓ Keep Original Destination</span>
+            <span class="hitl-opt change">🔀 Pick Alternative</span>
+          </div>
+        </div>
+        <div class="arrow-down">▼</div>
+        <div class="node node-api" style="width:240px;font-size:10px">🌐 Re-Geocode Alternative<div class="node-label">Get new lat/long · Re-fetch weather for chosen destination</div></div>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-orchestrator">🎯 Orchestrator Agent — Execution Plan<div class="node-label">Analyse state · Plan agent order · Conflict check · Retry management</div></div>
+    <div class="arrow-down">▼</div>
+
+    <!-- PARALLEL AGENTS — 3 agents (weather already done) -->
+    <div class="parallel-box">
+      <div class="parallel-label">⚡ PARALLEL — 3 agents call live APIs simultaneously</div>
+      <div style="text-align:center;margin-bottom:8px"><span style="display:inline-block;background:#0c1a0c;border:1px dashed #4ade80;border-radius:6px;padding:2px 12px;font-size:9px;color:#4ade80">🖥 rich_ui.py — live agent status panel updates in real time</span></div>
+      <div class="parallel-grid" style="grid-template-columns:repeat(3,1fr)">
+
+        <div class="flow-col">
+          <div class="node node-agent" style="width:100%;font-size:11px">✈ Agent 4<br>Transport Agent<div class="node-label">Amadeus flights + RapidAPI trains</div></div>
+          <div class="arrow-down" style="font-size:12px">▼</div>
+          <div class="node node-api" style="width:100%;font-size:10px">📡 Amadeus + RapidAPI<div class="node-label">Real flight fares &amp; train fares</div></div>
+          <div class="arrow-down" style="font-size:10px">▼</div>
+          <div class="node node-fallback" style="width:100%">↩ LLM price estimate</div>
+        </div>
+
+        <div class="flow-col">
+          <div class="node node-agent" style="width:100%;font-size:11px">🏨 Agent 5<br>Hotel Agent<div class="node-label">Amadeus hotel search near dest</div></div>
+          <div class="arrow-down" style="font-size:12px">▼</div>
+          <div class="node node-api" style="width:100%;font-size:10px">📡 Amadeus Hotel API<div class="node-label">Real hotel offers by lat/long</div></div>
+          <div class="arrow-down" style="font-size:10px">▼</div>
+          <div class="node node-fallback" style="width:100%">↩ LLM category estimate</div>
+        </div>
+
+        <div class="flow-col">
+          <div class="node node-agent" style="width:100%;font-size:11px">📍 Agent 6<br>Places Agent<div class="node-label">Foursquare nearby places by lat/long</div></div>
+          <div class="arrow-down" style="font-size:12px">▼</div>
+          <div class="node node-api" style="width:100%;font-size:10px">📡 Foursquare Places API<div class="node-label">Real attractions near destination</div></div>
+          <div style="text-align:center;margin:1px 0"><span style="font-size:8px;color:#4ade80;background:#0c1a0c;border:1px dashed #4ade80;border-radius:4px;padding:1px 6px">💾 cache/places_{dest}.json TTL 24h</span></div>
+          <div class="arrow-down" style="font-size:10px">▼</div>
+          <div class="node node-fallback" style="width:100%">↩ LLM generic guide</div>
+        </div>
+
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <!-- HITL GATE 2 — Places Preview -->
+    <div class="hitl-box">
+      <div class="hitl-box-title">⛔ HITL GATE 2 — Places Preview &amp; Customisation</div>
+      <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:8px;">
+        Show user the discovered places with live budget impact before building the itinerary<br>
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:6px;flex-wrap:wrap">
+          <span style="background:#0f2544;color:#93c5fd;padding:2px 8px;border-radius:6px;font-size:9px">📍 Must-visit (3–5)</span>
+          <span style="background:#052e16;color:#6ee7b7;padding:2px 8px;border-radius:6px;font-size:9px">🍽 Food spots (3–4)</span>
+          <span style="background:#2d1b69;color:#c4b5fd;padding:2px 8px;border-radius:6px;font-size:9px">🎯 Activities (2–3)</span>
+          <span style="background:#1c1917;color:#fcd34d;padding:2px 8px;border-radius:6px;font-size:9px">💎 Hidden gems (1–2)</span>
+        </div>
+        <div style="margin-top:8px;background:#0a1a0a;border:1px solid #166534;border-radius:6px;padding:5px 10px;font-size:9px;color:#4ade80;text-align:left;display:inline-block">
+          💰 Cost impact shown per place: &nbsp;<b>➕ Dudhsagar day trip → +Rs.1,400 on Day 2</b> &nbsp;|&nbsp; <b>✕ Scuba Diving → saves Rs.2,800</b>
+        </div>
+      </div>
+      <div class="hitl-options">
+        <span class="hitl-opt approve">✓ Looks Good — Build Itinerary</span>
+        <span class="hitl-opt change">➕ Add My Own Places</span>
+        <span class="hitl-opt cancel">✕ Remove a Place</span>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-agent">💰 Agent 7 — Budget Agent<div class="node-label">Total breakdown · Fixed costs (transport + hotel) · Daily variable pool · Savings tips</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div class="guardrail-box">
+      <div class="guardrail-title">🛡 GUARDRAIL 2 — Budget Conflict Detection</div>
+      <div class="guardrail-checks">
+        <span class="guardrail-check">total ≤ budget × 1.15</span>
+        <span class="guardrail-check">hotel ≤ 60% of budget</span>
+        <span class="guardrail-check">transport + hotel &lt; total budget</span>
+        <span class="guardrail-check">if conflict → auto re-plan signal</span>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <!-- SMART BUDGET DISTRIBUTION -->
+    <div class="eval-box" style="border-color:#0ea5e9;background:#0c1a2e;max-width:680px">
+      <div class="eval-title" style="color:#38bdf8">📊 Smart Daily Budget Distribution</div>
+      <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:8px">
+        daily_pool = total_budget − transport − hotel<br>
+        base_daily = daily_pool ÷ num_days &nbsp;|&nbsp; each day = base_daily × weight ± 5%
+      </div>
+      <div class="eval-metrics" style="margin-bottom:8px">
+        <span class="eval-metric" style="border-color:#0369a1;background:#082035">Arrival day × 0.85</span>
+        <span class="eval-metric" style="border-color:#0369a1;background:#082035">Leisure / beach × 0.90</span>
+        <span class="eval-metric" style="border-color:#0369a1;background:#082035">Cultural day × 1.05</span>
+        <span class="eval-metric" style="border-color:#0369a1;background:#082035">Heavy sightseeing × 1.10</span>
+        <span class="eval-metric" style="border-color:#0369a1;background:#082035">Far distance day × 1.15</span>
+        <span class="eval-metric" style="border-color:#0369a1;background:#082035">Departure day × 0.80</span>
+      </div>
+      <div style="font-size:10px;color:#38bdf8;text-align:center">
+        Σ(all day targets) normalized to = daily_pool &nbsp;·&nbsp; Tolerance: ±5% per day &nbsp;·&nbsp; Itinerary Agent enforces per-day target
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <!-- HITL GATE 3 — Budget Approval -->
+    <div class="hitl-box">
+      <div class="hitl-box-title">⛔ HITL GATE 3 — Budget Approval</div>
+      <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:8px;">
+        Show full budget breakdown before building itinerary · User approves or requests cost reduction
+        <div style="display:flex;gap:6px;justify-content:center;margin-top:6px;flex-wrap:wrap">
+          <span style="background:#0f2544;color:#93c5fd;padding:2px 8px;border-radius:6px;font-size:9px">✈ Transport: Rs.8,000</span>
+          <span style="background:#052e16;color:#6ee7b7;padding:2px 8px;border-radius:6px;font-size:9px">🏨 Hotel: Rs.9,000</span>
+          <span style="background:#2d1b69;color:#c4b5fd;padding:2px 8px;border-radius:6px;font-size:9px">🍽 Food: Rs.5,200</span>
+          <span style="background:#1c1917;color:#fcd34d;padding:2px 8px;border-radius:6px;font-size:9px">🎯 Activities: Rs.3,100</span>
+          <span style="background:#431407;color:#fed7aa;padding:2px 8px;border-radius:6px;font-size:9px">📦 Misc: Rs.2,200</span>
+        </div>
+      </div>
+      <div class="hitl-options">
+        <span class="hitl-opt approve">✓ Approve Budget → Build Plan</span>
+        <span class="hitl-opt change">💸 Too Expensive — Suggest Cheaper Places</span>
+        <span class="hitl-opt change">🚌 Save on Transport Instead</span>
+        <span class="hitl-opt cancel">✕ Both (Places + Transport)</span>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <!-- BUDGET REDUCTION BRANCH -->
+    <div class="branch-row" style="margin:4px 0">
+      <div class="branch-col">
+        <span class="branch-label yes">✓ APPROVED</span>
+        <div class="arrow-down">▼</div>
+        <div class="node node-agent" style="width:180px;font-size:10px">Proceed to Itinerary Agent</div>
+      </div>
+      <div class="branch-col">
+        <span class="branch-label no" style="color:#fb923c;border-color:#ea580c">💸 REDUCE BUDGET</span>
+        <div class="arrow-down">▼</div>
+        <div class="hitl-box" style="width:360px;margin:4px 0">
+          <div class="hitl-box-title" style="font-size:9px">Budget Reduction Options</div>
+          <div style="font-size:9px;color:#94a3b8;margin-bottom:6px;text-align:left;padding:0 4px">
+            <b style="color:#fb923c">Option A — Cheaper Places (same destination):</b><br>
+            LLM replaces expensive activities with free/low-cost alternatives<br>
+            e.g. "Remove Spice Plantation Tour (Rs.1,800) → Mapusa Market visit (free)"<br><br>
+            <b style="color:#38bdf8">Option B — Cheaper Transport:</b><br>
+            Show alternate transport modes ranked by cost saving<br>
+            e.g. "Switch flight → train: saves Rs.4,200 · adds 8h travel time"<br><br>
+            <b style="color:#4ade80">Option C — Both:</b><br>
+            Apply cheapest places + cheapest transport simultaneously
+          </div>
+          <div class="hitl-options" style="flex-wrap:wrap">
+            <span class="hitl-opt change">A — Cheaper Places</span>
+            <span class="hitl-opt approve">B — Cheaper Transport</span>
+            <span class="hitl-opt approve" style="background:#052e16;color:#34d399;border-color:#059669">C — Both</span>
+          </div>
+        </div>
+        <div class="arrow-down">▼</div>
+        <div class="node node-agent" style="width:260px;font-size:10px">♻ Re-run Budget Agent with updated choices<div class="node-label">New total shown · Gate 3 repeats until approved (max 3 rounds)</div></div>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-agent">📅 Agent 8 — Itinerary Agent<div class="node-label">Receives per-day budget targets · Plans activities within ±5% of each day's target · Schedules far places on high-budget days</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div class="eval-box">
+      <div class="eval-title">📊 EVALUATION 1 — Itinerary Quality</div>
+      <div class="eval-metrics">
+        <span class="eval-metric">pacing_score</span>
+        <span class="eval-metric">variety_score</span>
+        <span class="eval-metric">preference_alignment</span>
+        <span class="eval-metric">date_consistency</span>
+        <span class="eval-metric">budget_per_day_check (±5%)</span>
+        <span class="eval-metric">distance_vs_budget_alignment</span>
+      </div>
+    </div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-agent">🔍 Agent 9 — Final Review Agent<div class="node-label">Validates real prices match plan · Flags inconsistencies · Score 1–10</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div class="node node-orchestrator">🎯 Orchestrator — Validation Decision<div class="node-label">score ≥ 7 → approve · &lt; 7 → retry (max 3x) · exhausted → force approve · checkpoint saved after each retry</div></div>
+    <div class="arrow-down">▼</div>
+
+    <div class="branch-row">
+      <div class="branch-col">
+        <span class="branch-label retry">↩ RETRY</span>
+        <div class="arrow-down">↺</div>
+        <div class="node node-agent" style="width:180px;font-size:10px">Re-run failed agent</div>
+      </div>
+      <div class="branch-col">
+        <span class="branch-label yes">✓ APPROVED</span>
+        <div class="arrow-down">▼</div>
+
+        <div class="guardrail-box" style="margin:4px 0">
+          <div class="guardrail-title">🛡 GUARDRAIL 3 — Output Validation</div>
+          <div class="guardrail-checks">
+            <span class="guardrail-check">all days present</span>
+            <span class="guardrail-check">no placeholders</span>
+            <span class="guardrail-check">budget parts sum</span>
+            <span class="guardrail-check">real hotel/place names</span>
+          </div>
+        </div>
+        <div class="arrow-down">▼</div>
+
+        <div class="hitl-box" style="margin:4px 0">
+          <div class="hitl-box-title">⛔ HITL GATE 2 — Full Plan Approval</div>
+          <div style="font-size:10px;color:#94a3b8;text-align:center;margin-bottom:7px;">
+            Show full itinerary with real prices · Hotel name · Flight details · Weather summary
+          </div>
+          <div class="hitl-options">
+            <span class="hitl-opt approve">✓ Approve → PDF</span>
+            <span class="hitl-opt change">✏ Request Changes</span>
+            <span class="hitl-opt cancel">✕ Cancel</span>
+          </div>
+        </div>
+        <div class="arrow-down">▼</div>
+
+        <div class="branch-row">
+          <div class="branch-col">
+            <span class="branch-label no">✏ CHANGES</span>
+            <div class="arrow-down">↑</div>
+            <div class="node node-agent" style="width:180px;font-size:10px">Re-run Itinerary<br>with feedback</div>
+          </div>
+          <div class="branch-col">
+            <span class="branch-label yes">✓ APPROVED</span>
+            <div class="arrow-down">▼</div>
+            <div class="node node-memory" style="margin:3px 0">🧠 Memory Update<div class="node-label">Save preferences &amp; real prices to JSON memory</div></div>
+            <div class="arrow-down">▼</div>
+            <div class="node node-pdf" style="margin:3px 0">📄 Agent 10 — PDF Generator<div class="node-label">ReportLab · Real prices · Real hotel · Real weather · 6 sections</div></div>
+            <div class="arrow-down">▼</div>
+            <div class="eval-box" style="margin:4px 0">
+              <div class="eval-title">📊 EVALUATION 2 — Final Plan Score</div>
+              <div class="eval-metrics">
+                <span class="eval-metric">overall_quality 0–10</span>
+                <span class="eval-metric">budget_adherence %</span>
+                <span class="eval-metric">data_freshness</span>
+                <span class="eval-metric">api_success_rate</span>
+              </div>
+            </div>
+            <div class="arrow-down">▼</div>
+            <div class="hitl-box" style="margin:4px 0">
+              <div class="hitl-box-title">⛔ HITL GATE 3 — PDF Confirm</div>
+              <div class="hitl-options">
+                <span class="hitl-opt approve">✓ Download PDF</span>
+                <span class="hitl-opt change">🔄 Regenerate</span>
+              </div>
+            </div>
+            <div class="arrow-down">▼</div>
+            <div class="node node-end">🏁 END — Complete<div class="node-label">PDF saved · summary.txt · Memory updated · Eval logged · Session log closed · Cache retained</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: API INTEGRATIONS ═══ -->
+<div id="tab-apis" class="tab-content">
+
+  <div class="section-title">Live API Overview</div>
+  <table style="margin-bottom:30px">
+    <tr><th>Agent</th><th>API Used</th><th>What It Fetches</th><th>Cost</th><th>Key Name in .env</th></tr>
+    <tr><td>Geocoding (shared)</td><td>OpenWeatherMap Geocoding</td><td>City name → Latitude + Longitude</td><td><span class="td-badge" style="background:#052e16;color:#34d399">FREE</span></td><td><code>OPENWEATHER_API_KEY</code></td></tr>
+    <tr><td>Weather Agent</td><td>OpenWeatherMap Forecast API</td><td>5-day / 3-hour forecast by lat/long</td><td><span class="td-badge" style="background:#052e16;color:#34d399">FREE</span></td><td><code>OPENWEATHER_API_KEY</code></td></tr>
+    <tr><td>Transport — Flights</td><td>Amadeus Flight Offers API</td><td>Real flight options + prices between cities</td><td><span class="td-badge" style="background:#052e16;color:#34d399">FREE sandbox</span></td><td><code>AMADEUS_API_KEY</code> + <code>AMADEUS_API_SECRET</code></td></tr>
+    <tr><td>Transport — Trains</td><td>RapidAPI Indian Railways</td><td>Train availability + real fare between stations</td><td><span class="td-badge" style="background:#052e16;color:#34d399">FREE tier</span></td><td><code>RAPIDAPI_KEY</code></td></tr>
+    <tr><td>Hotel Agent</td><td>Amadeus Hotel Search API</td><td>Real hotels near destination with prices</td><td><span class="td-badge" style="background:#052e16;color:#34d399">FREE sandbox</span></td><td><code>AMADEUS_API_KEY</code> + <code>AMADEUS_API_SECRET</code></td></tr>
+    <tr><td>Places Agent</td><td>Foursquare Places API</td><td>Attractions, food, activities near lat/long</td><td><span class="td-badge" style="background:#052e16;color:#34d399">FREE tier</span></td><td><code>FOURSQUARE_API_KEY</code></td></tr>
+    <tr><td>All LLM agents</td><td>OpenRouter API</td><td>LLM reasoning, structured output, decisions</td><td><span class="td-badge" style="background:#713f12;color:#fef08a">Pay-per-use</span></td><td><code>OPENROUTER_API_KEY</code></td></tr>
+  </table>
+
+  <!-- OWM Geocoding -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">🌐 1. OpenWeatherMap Geocoding API</div>
+      <span class="api-free">FREE — 1000 calls/day</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">Convert city name → Latitude &amp; Longitude (used by Weather + Hotel + Places agents)</span>
+      <span class="api-key">Sign up</span><span class="api-val">openweathermap.org → Free account → API Keys tab</span>
+      <span class="api-key">Endpoint</span><span class="api-val"><span class="api-endpoint">GET http://api.openweathermap.org/geo/1.0/direct?q={city}&amp;limit=1&amp;appid={KEY}</span></span>
+      <span class="api-key">Same key</span><span class="api-val">One key works for both Geocoding + Forecast APIs</span>
+    </div>
+    <div class="api-response-box"># Example response for q=Goa
+[{
+  "name": "Goa",
+  "lat": 15.2993,
+  "lon": 74.1240,
+  "country": "IN",
+  "state": "Goa"
+}]</div>
+  </div>
+
+  <!-- OWM Forecast -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">🌤 2. OpenWeatherMap Forecast API</div>
+      <span class="api-free">FREE — 1000 calls/day</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">Real 5-day weather forecast for destination using lat/long</span>
+      <span class="api-key">Endpoint</span><span class="api-val"><span class="api-endpoint">GET https://api.openweathermap.org/data/2.5/forecast?lat={lat}&amp;lon={lon}&amp;appid={KEY}&amp;units=metric</span></span>
+      <span class="api-key">Response</span><span class="api-val">Forecast every 3 hours · temp, humidity, rain, wind, weather description</span>
+      <span class="api-key">Used for</span><span class="api-val">Weather Agent assesses conditions during travel dates → good/moderate/bad</span>
+    </div>
+    <div class="api-response-box"># Key fields extracted from response
+{
+  "list": [
+    { "dt_txt": "2025-06-15 09:00:00",
+      "main": { "temp": 28.5, "humidity": 85 },
+      "weather": [{ "description": "moderate rain" }],
+      "rain": { "3h": 4.2 }
+    }
+  ]
+}</div>
+  </div>
+
+  <!-- Amadeus Flights -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">✈ 3. Amadeus Flight Offers Search API</div>
+      <span class="api-free">FREE sandbox (test data)</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">Real flight search between two cities with actual fares</span>
+      <span class="api-key">Sign up</span><span class="api-val">developers.amadeus.com → Create App → Get API Key + Secret</span>
+      <span class="api-key">Auth</span><span class="api-val">OAuth2: POST /v1/security/oauth2/token → get access_token (expires 30 min)</span>
+      <span class="api-key">Endpoint</span><span class="api-val"><span class="api-endpoint">GET https://test.api.amadeus.com/v2/shopping/flight-offers?originLocationCode=BLR&amp;destinationLocationCode=GOI&amp;departureDate=2025-06-15&amp;adults=2</span></span>
+      <span class="api-key">Note</span><span class="api-val">Uses IATA airport codes — BLR (Bengaluru), GOI (Goa), DEL (Delhi), BOM (Mumbai)</span>
+    </div>
+    <div class="api-response-box"># Key fields from response
+{
+  "data": [{
+    "itineraries": [{
+      "segments": [{ "departure": {"iataCode":"BLR","at":"2025-06-15T06:00:00"},
+                     "arrival":   {"iataCode":"GOI","at":"2025-06-15T07:15:00"},
+                     "carrierCode": "6E", "number": "451",
+                     "duration": "PT1H15M" }]
+    }],
+    "price": { "total": "5840.00", "currency": "INR" }
+  }]
+}</div>
+  </div>
+
+  <!-- RapidAPI Trains -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">🚂 4. RapidAPI — Indian Railways API</div>
+      <span class="api-free">FREE tier — 100 calls/month</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">Real train availability + fare between Indian city pairs</span>
+      <span class="api-key">Sign up</span><span class="api-val">rapidapi.com → Search "Indian Railways" → Subscribe to free tier</span>
+      <span class="api-key">Endpoint</span><span class="api-val"><span class="api-endpoint">GET https://irctc1.p.rapidapi.com/api/v3/trainBetweenStations?fromStationCode=SBC&amp;toStationCode=MAO&amp;dateOfJourney=2025-06-15</span></span>
+      <span class="api-key">Station codes</span><span class="api-val">SBC (Bengaluru), MAO (Madgaon/Goa), NDLS (New Delhi), CSTM (Mumbai)</span>
+      <span class="api-key">Fallback</span><span class="api-val">If free tier exhausted → LLM estimates based on known fare ranges</span>
+    </div>
+    <div class="api-response-box"># Key fields
+{
+  "data": [{
+    "train_name": "Goa Express",
+    "train_number": "10104",
+    "from_station_name": "KSR BENGALURU",
+    "to_station_name": "MADGAON",
+    "departure_time": "21:15",
+    "arrival_time": "10:50",
+    "duration": "13h 35m",
+    "fare": { "sleeper": 285, "third_ac": 775, "second_ac": 1125 }
+  }]
+}</div>
+  </div>
+
+  <!-- Amadeus Hotels -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">🏨 5. Amadeus Hotel Search API</div>
+      <span class="api-free">FREE sandbox (test data)</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">Search real hotels near destination lat/long with prices per night</span>
+      <span class="api-key">Step 1 — Get hotel IDs</span><span class="api-val"><span class="api-endpoint">GET /v1/reference-data/locations/hotels/by-geocode?latitude=15.29&amp;longitude=74.12&amp;radius=10&amp;radiusUnit=KM&amp;ratings=3,4,5</span></span>
+      <span class="api-key">Step 2 — Get offers</span><span class="api-val"><span class="api-endpoint">GET /v3/shopping/hotel-offers?hotelIds=BWLON283&amp;adults=2&amp;checkInDate=2025-06-15&amp;checkOutDate=2025-06-20</span></span>
+      <span class="api-key">Same key</span><span class="api-val">Same Amadeus API Key + Secret as flights</span>
+    </div>
+    <div class="api-response-box"># Key fields
+{
+  "data": [{
+    "hotel": { "name": "Taj Holiday Village Resort", "hotelId": "TCGOA001",
+               "rating": "5", "address": { "cityName": "Goa" } },
+    "offers": [{
+      "price": { "total": "12500", "currency": "INR" },
+      "room": { "typeEstimated": { "bedType": "DOUBLE" } },
+      "checkInDate": "2025-06-15", "checkOutDate": "2025-06-20"
+    }]
+  }]
+}</div>
+  </div>
+
+  <!-- Foursquare -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">📍 6. Foursquare Places API</div>
+      <span class="api-free">FREE — 1000 calls/day</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">Real tourist attractions, restaurants, activities near destination</span>
+      <span class="api-key">Sign up</span><span class="api-val">foursquare.com/developer → Create Project → API Key</span>
+      <span class="api-key">Endpoint</span><span class="api-val"><span class="api-endpoint">GET https://api.foursquare.com/v3/places/search?ll=15.2993,74.1240&amp;categories=16000&amp;limit=10&amp;radius=10000</span></span>
+      <span class="api-key">Categories</span><span class="api-val">16000=Landmarks, 13000=Food, 18000=Outdoors, 10000=Arts</span>
+    </div>
+    <div class="api-response-box"># Key fields
+{
+  "results": [{
+    "name": "Calangute Beach",
+    "categories": [{ "name": "Beach" }],
+    "location": { "address": "Calangute, Goa", "distance": 2300 },
+    "rating": 8.7,
+    "hours": { "open_now": true }
+  }]
+}</div>
+  </div>
+
+  <!-- OpenRouter -->
+  <div class="api-card">
+    <div class="api-card-header">
+      <div class="api-card-title">🤖 7. OpenRouter API (LLM)</div>
+      <span class="api-paid">Pay per token</span>
+    </div>
+    <div class="api-detail">
+      <span class="api-key">Purpose</span><span class="api-val">All LLM calls — user input parsing, itinerary generation, review, orchestrator decisions</span>
+      <span class="api-key">Model</span><span class="api-val">openai/gpt-4o-mini (cheapest + fast) or meta-llama/llama-3.1-8b-instruct (very cheap)</span>
+      <span class="api-key">Integration</span><span class="api-val">LangChain ChatOpenAI with base_url="https://openrouter.ai/api/v1"</span>
+      <span class="api-key">Endpoint</span><span class="api-val"><span class="api-endpoint">POST https://openrouter.ai/api/v1/chat/completions</span></span>
+    </div>
+    <div class="api-response-box"># LangChain setup with OpenRouter
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="openai/gpt-4o-mini",
+    openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+    openai_api_base="https://openrouter.ai/api/v1",
+)</div>
+  </div>
+
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: STRUCTURE ═══ -->
+<div id="tab-structure" class="tab-content">
+  <div class="section-title">Complete Project Structure</div>
+  <pre class="tree">
+<span class="tree-folder">trip-planner-v3/</span>
+│
+├── <span class="tree-file">main.py</span>                         <span class="tree-comment"># LangGraph graph + SqliteSaver checkpointer + entry point</span>
+├── <span class="tree-file">state.py</span>                        <span class="tree-comment"># TripState TypedDict (shared whiteboard)</span>
+├── <span class="tree-new">checkpointer.py</span>                 <span class="tree-comment"># SqliteSaver setup + resume_session() helper</span>
+├── <span class="tree-file">requirements.txt</span>
+├── <span class="tree-file">.env</span>                            <span class="tree-comment"># All API keys (never commit this)</span>
+├── <span class="tree-file">.env.example</span>                    <span class="tree-comment"># Template with key names only</span>
+│
+├── <span class="tree-folder tree-api">api_clients/</span>                    <span class="tree-comment"># NEW: Live API wrappers</span>
+│   ├── <span class="tree-api">__init__.py</span>
+│   ├── <span class="tree-api">geocoding_client.py</span>         <span class="tree-comment"># OWM: city name → lat/long</span>
+│   ├── <span class="tree-api">weather_client.py</span>           <span class="tree-comment"># OWM: 5-day forecast by lat/long</span>
+│   ├── <span class="tree-api">amadeus_client.py</span>           <span class="tree-comment"># Amadeus: OAuth2 + flights + hotels</span>
+│   ├── <span class="tree-api">train_client.py</span>             <span class="tree-comment"># RapidAPI: Indian train fares</span>
+│   └── <span class="tree-api">places_client.py</span>            <span class="tree-comment"># Foursquare: attractions by lat/long</span>
+│
+├── <span class="tree-folder">agents/</span>
+│   ├── <span class="tree-file">__init__.py</span>
+│   ├── <span class="tree-file">user_input_agent.py</span>         <span class="tree-comment"># OpenRouter LLM → structured preferences</span>
+│   ├── <span class="tree-new">memory_agent.py</span>             <span class="tree-comment"># Load/save JSON user memory</span>
+│   ├── <span class="tree-file">weather_agent.py</span>            <span class="tree-comment"># Calls weather_client → LLM assesses</span>
+│   ├── <span class="tree-file">transport_agent.py</span>          <span class="tree-comment"># amadeus_client (flights) + train_client</span>
+│   ├── <span class="tree-file">hotel_agent.py</span>              <span class="tree-comment"># amadeus_client hotel search</span>
+│   ├── <span class="tree-file">places_agent.py</span>             <span class="tree-comment"># places_client → LLM enriches</span>
+│   ├── <span class="tree-file">budget_agent.py</span>             <span class="tree-comment"># Real prices → accurate breakdown</span>
+│   ├── <span class="tree-file">itinerary_agent.py</span>          <span class="tree-comment"># LLM with real hotel/place names</span>
+│   ├── <span class="tree-file">review_agent.py</span>             <span class="tree-comment"># Validates real prices in plan</span>
+│   ├── <span class="tree-file">orchestrator_agent.py</span>       <span class="tree-comment"># Decision: approve / retry / force</span>
+│   └── <span class="tree-file">pdf_agent.py</span>                <span class="tree-comment"># ReportLab PDF with real data</span>
+│
+├── <span class="tree-folder">guardrails/</span>
+│   ├── <span class="tree-new">input_guardrails.py</span>         <span class="tree-comment"># Validate dates, budget, travelers</span>
+│   └── <span class="tree-new">output_guardrails.py</span>        <span class="tree-comment"># Validate itinerary completeness</span>
+│
+├── <span class="tree-folder">evaluations/</span>
+│   ├── <span class="tree-new">itinerary_evaluator.py</span>      <span class="tree-comment"># Pacing, variety, preference scores</span>
+│   └── <span class="tree-new">plan_evaluator.py</span>           <span class="tree-comment"># Final A–D grade, logged to JSON</span>
+│
+├── <span class="tree-folder">memory/</span>
+│   ├── <span class="tree-new">memory_store.py</span>             <span class="tree-comment"># Read/write user JSON files</span>
+│   └── <span class="tree-new">user_memories/</span>             <span class="tree-comment"># Per-user JSON (auto-created)</span>
+│
+├── <span class="tree-folder">hitl/</span>
+│   └── <span class="tree-new">checkpoints.py</span>             <span class="tree-comment"># Gate 1, Gate 2, Gate 3</span>
+│
+├── <span class="tree-folder">fallback/</span>
+│   └── <span class="tree-new">fallback_handlers.py</span>       <span class="tree-comment"># Retry wrapper + per-agent fallbacks</span>
+│
+├── <span class="tree-folder tree-new">checkpoints/</span>                    <span class="tree-comment"># Auto-created · one .db per session_id</span>
+│   └── <span class="tree-new">trip_{session_id}.db</span>        <span class="tree-comment"># SqliteSaver checkpoint file (resumable)</span>
+│
+├── <span class="tree-folder tree-new">cache/</span>                          <span class="tree-comment"># API response cache (avoids rate-limit hits)</span>
+│   ├── <span class="tree-new">cache_store.py</span>             <span class="tree-comment"># get/set with TTL · JSON files</span>
+│   ├── <span class="tree-new">weather_{dest}_{date}.json</span>  <span class="tree-comment"># TTL: 1 hour</span>
+│   ├── <span class="tree-new">places_{dest}.json</span>          <span class="tree-comment"># TTL: 24 hours</span>
+│   └── <span class="tree-new">geocode_{city}.json</span>         <span class="tree-comment"># TTL: 7 days (cities don't move)</span>
+│
+├── <span class="tree-folder tree-new">logs/</span>                           <span class="tree-comment"># Structured session logs</span>
+│   └── <span class="tree-new">session_{session_id}.log</span>   <span class="tree-comment"># Per-session: agent runs, API calls, retries, fallbacks</span>
+│
+├── <span class="tree-new">rich_ui.py</span>                      <span class="tree-comment"># Rich terminal live progress panel · agent status table</span>
+│
+└── <span class="tree-folder">output/</span>                         <span class="tree-comment"># Generated PDFs + summary.txt + evaluation_log.json</span>
+  </pre>
+
+  <div class="section-title" style="margin-top:28px">Key Change: api_clients/ Layer</div>
+  <p style="font-size:12px;color:#94a3b8;margin-bottom:14px;">
+    Every agent that needs live data calls a dedicated client in <code>api_clients/</code>.
+    This separates HTTP logic from agent logic — agents stay clean, clients handle auth + retries.
+  </p>
+  <table>
+    <tr><th>Client File</th><th>API</th><th>Called By</th><th>Returns</th></tr>
+    <tr><td><code>geocoding_client.py</code></td><td>OWM Geocoding</td><td>main.py (once, before agents)</td><td><code>{lat, lon}</code> for source &amp; destination</td></tr>
+    <tr><td><code>weather_client.py</code></td><td>OWM Forecast</td><td>weather_agent.py</td><td>Forecast list for travel dates</td></tr>
+    <tr><td><code>amadeus_client.py</code></td><td>Amadeus</td><td>transport_agent.py, hotel_agent.py</td><td>Flight offers list, hotel offers list</td></tr>
+    <tr><td><code>train_client.py</code></td><td>RapidAPI Railways</td><td>transport_agent.py</td><td>Train list with fares per class</td></tr>
+    <tr><td><code>places_client.py</code></td><td>Foursquare</td><td>places_agent.py</td><td>Nearby places with name, rating, category</td></tr>
+  </table>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: AGENTS ═══ -->
+<div id="tab-agents" class="tab-content">
+  <div class="section-title">All Agents — Real API Edition</div>
+  <div class="cards">
+
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🗣</span><div><div class="card-title">1. User Input Agent</div><div class="card-subtitle">OpenRouter LLM</div></div></div>
+      <div class="card-body">Multi-turn conversation collects all trip preferences. Returns structured dict. No external API — pure LLM.</div>
+      <span class="card-tag tag-blue">OpenRouter</span><span class="card-tag tag-blue">Structured Output</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🧠</span><div><div class="card-title">2. Memory Agent</div><div class="card-subtitle">File-based JSON</div></div></div>
+      <div class="card-body">Loads user_memories/&lt;user_id&gt;.json. Returns past destinations, preferred hotel tier, food prefs, avg budget. Saves updated memory after plan approval.</div>
+      <span class="card-tag tag-green">No API needed</span><span class="card-tag tag-green">Personalisation</span>
+    </div>
+
+    <div class="card" style="border-color:#059669">
+      <div class="card-header"><span class="card-icon">🌤</span><div><div class="card-title">3. Weather Agent</div><div class="card-subtitle">OpenWeatherMap API — LIVE</div></div></div>
+      <div class="card-body">
+        <b>Step 1:</b> geocoding_client.py → get lat/long for destination<br>
+        <b>Step 2:</b> weather_client.py → fetch 5-day forecast<br>
+        <b>Step 3:</b> LLM assesses forecast for travel dates → good/moderate/bad<br>
+        <b>If bad:</b> LLM suggests alternatives (still LLM-based)
+      </div>
+      <span class="card-tag tag-green">OWM API</span><span class="card-tag tag-blue">LLM Assessment</span>
+    </div>
+
+    <div class="card" style="border-color:#059669">
+      <div class="card-header"><span class="card-icon">✈</span><div><div class="card-title">4. Transport Agent</div><div class="card-subtitle">Amadeus + RapidAPI — LIVE</div></div></div>
+      <div class="card-body">
+        <b>Flights:</b> amadeus_client.py → search real flights using IATA codes. Returns actual fares, durations, airlines.<br>
+        <b>Trains:</b> train_client.py → RapidAPI railways. Returns real train names, fares per class (SL/3A/2A).<br>
+        <b>LLM:</b> Compares options, recommends best fit for budget/type.
+      </div>
+      <span class="card-tag tag-green">Amadeus API</span><span class="card-tag tag-yellow">RapidAPI</span><span class="card-tag tag-blue">LLM Decision</span>
+    </div>
+
+    <div class="card" style="border-color:#059669">
+      <div class="card-header"><span class="card-icon">🏨</span><div><div class="card-title">5. Hotel Agent</div><div class="card-subtitle">Amadeus Hotel API — LIVE</div></div></div>
+      <div class="card-body">
+        <b>Step 1:</b> amadeus_client.py → get hotel IDs near destination lat/long<br>
+        <b>Step 2:</b> fetch real offers with check-in/out dates and traveler count<br>
+        <b>LLM:</b> Picks best 3 across budget tiers. Matches user hotel_pref.
+      </div>
+      <span class="card-tag tag-green">Amadeus API</span><span class="card-tag tag-blue">LLM Filter</span>
+    </div>
+
+    <div class="card" style="border-color:#059669">
+      <div class="card-header"><span class="card-icon">📍</span><div><div class="card-title">6. Places Agent</div><div class="card-subtitle">Foursquare API — LIVE</div></div></div>
+      <div class="card-body">
+        <b>Foursquare:</b> Search attractions, restaurants, outdoor spots by lat/long + category.<br>
+        <b>LLM:</b> Enriches raw results — adds time estimates, best time to visit, tips.<br>
+        Returns must_visit, food_spots, activities, hidden_gems with real names.
+      </div>
+      <span class="card-tag tag-teal" style="background:#134e4a;color:#99f6e4">Foursquare API</span><span class="card-tag tag-blue">LLM Enrichment</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-icon">💰</span><div><div class="card-title">7. Budget Agent</div><div class="card-subtitle">Real prices + Smart Daily Distribution</div></div></div>
+      <div class="card-body">
+        Uses real prices from state (flight fare, hotel total, entry fees). LLM estimates food + misc.<br><br>
+        <b>Smart Daily Budget Distribution:</b><br>
+        • <code>daily_pool</code> = total − transport − hotel<br>
+        • <code>base_daily</code> = daily_pool ÷ num_days<br>
+        • Each day gets <code>base_daily × weight_factor</code> based on day type + distance:<br>
+        &nbsp;&nbsp;Arrival 0.85 · Leisure 0.90 · Cultural 1.05 · Heavy sightseeing 1.10 · Far distance 1.15 · Departure 0.80<br>
+        • Targets normalized so Σ = daily_pool<br>
+        • Tolerance: <b>±5% per day</b> — Itinerary Agent must stay within this range
+      </div>
+      <span class="card-tag tag-blue">Real price data</span><span class="card-tag tag-red">Guardrail integrated</span><span class="card-tag tag-green">±5% day targets</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-icon">📅</span><div><div class="card-title">8. Itinerary Agent</div><div class="card-subtitle">OpenRouter LLM · budget-constrained per day</div></div></div>
+      <div class="card-body">
+        Receives <code>daily_budget_targets[]</code> from Budget Agent. For each day:<br>
+        • Schedules places whose entry fees + food + local transport fit within <code>target ± 5%</code><br>
+        • Puts far-distance places on <b>high-budget days</b> (weight ≥ 1.10)<br>
+        • Puts beach / leisure on <b>low-budget days</b> (weight ≤ 0.90)<br>
+        Uses real hotel names (Amadeus), real place names (Foursquare), real weather.
+      </div>
+      <span class="card-tag tag-blue">OpenRouter</span><span class="card-tag tag-green">Real context</span><span class="card-tag tag-purple">±5% enforced</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🔍</span><div><div class="card-title">9. Final Review Agent</div><div class="card-subtitle">OpenRouter LLM</div></div></div>
+      <div class="card-body">Validates real prices, date logic, hotel-to-activity proximity, weather alignment. <b>Also checks each day's estimated_spend is within ±5% of its daily_budget_target.</b> Days that exceed tolerance are flagged as issues (score deducted). Score ≥ 7 = approved.</div>
+      <span class="card-tag tag-blue">Validation</span><span class="card-tag tag-red">Conflict detection</span><span class="card-tag tag-green">±5% per-day check</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-icon">📄</span><div><div class="card-title">10. PDF Generator</div><div class="card-subtitle">ReportLab + WhatsApp Export</div></div></div>
+      <div class="card-body">
+        6-section A4 PDF: cover · budget table (per-day targets vs actuals) · itinerary · places visited · packing list · emergency contacts.<br><br>
+        <b>Also generates <code>output/summary.txt</code></b> — WhatsApp-ready plain text with emojis, line-by-line itinerary. Copy-paste into group chat to share with travel companions.
+      </div>
+      <span class="card-tag tag-orange">ReportLab</span><span class="card-tag tag-orange">Fallback: JSON</span><span class="card-tag tag-green">WhatsApp export</span>
+    </div>
+
+    <div class="card" style="border-color:#7c3aed">
+      <div class="card-header"><span class="card-icon">🎯</span><div><div class="card-title">11. Orchestrator</div><div class="card-subtitle">Brain of the system</div></div></div>
+      <div class="card-body">Reads review_status. Approves (score ≥ 7) → HITL Gate 3. Re-generates itinerary up to <b>3 times</b> with review issues as feedback. After 3 attempts → force-approves with warnings. Tracks <code>retry_count</code> and <code>failed_agents[]</code> in state. Checkpoint saved after each decision.</div>
+      <span class="card-tag tag-purple">Brain</span><span class="card-tag tag-orange">3 retries</span><span class="card-tag tag-green">Checkpoint-aware</span>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: GUARDRAILS ═══ -->
+<div id="tab-guardrails" class="tab-content">
+  <div class="section-title">Guardrail Architecture</div>
+  <div class="cards">
+    <div class="card" style="border-color:#dc2626">
+      <div class="card-header"><span class="card-icon">🛡</span><div><div class="card-title">Guardrail 1 — Input Validation</div><div class="card-subtitle">Before graph execution · input_guardrails.py</div></div></div>
+      <div class="card-body"><b>Hard blocks:</b> Past dates · end ≤ start · budget &lt; Rs.3,000 · travelers &lt;1 or &gt;50 · same source &amp; destination<br><b>Soft warnings:</b> Very low budget · trip &gt;30 days · unknown travel_type</div>
+      <span class="card-tag tag-red">Hard Block</span><span class="card-tag tag-orange">Soft Warning</span>
+    </div>
+    <div class="card" style="border-color:#dc2626">
+      <div class="card-header"><span class="card-icon">🛡</span><div><div class="card-title">Guardrail 2 — Budget Conflict</div><div class="card-subtitle">After Budget Agent · budget_node in main.py</div></div></div>
+      <div class="card-body">Uses <b>real API prices</b> (actual flight fare + actual hotel total). Rules: total ≤ budget×1.15 · hotel ≤ 60% · transport+hotel &lt; budget. On conflict → Orchestrator re-runs Hotel Agent with lower cap.<br><br>Also validates: <b>daily_pool &gt; 0</b> (fixed costs must leave spending money) · each day target ≥ Rs.500 (minimum viable day).</div>
+      <span class="card-tag tag-red">Real prices</span><span class="card-tag tag-blue">Auto-trigger</span><span class="card-tag tag-green">Daily targets validated</span>
+    </div>
+    <div class="card" style="border-color:#dc2626">
+      <div class="card-header"><span class="card-icon">🛡</span><div><div class="card-title">Guardrail 3 — Output Validation</div><div class="card-subtitle">After Orchestrator approves · output_guardrails.py</div></div></div>
+      <div class="card-body">All N days present · no placeholder text · real hotel name matches state · budget parts sum to total · packing list ≥ 5 items · no duplicate dates.</div>
+      <span class="card-tag tag-red">Completeness</span><span class="card-tag tag-red">Real data check</span>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: EVALUATIONS ═══ -->
+<div id="tab-evaluations" class="tab-content">
+  <div class="section-title">Evaluation Framework</div>
+  <table>
+    <tr><th>Evaluator</th><th>When</th><th>Metrics</th><th>Output</th></tr>
+    <tr>
+      <td><b>Itinerary Evaluator</b></td>
+      <td>After Itinerary Agent, before Review</td>
+      <td>pacing_score · variety_score · preference_alignment · date_consistency · daily_budget_check</td>
+      <td>eval_scores added to state. Low score flags for Review Agent.</td>
+    </tr>
+    <tr>
+      <td><b>Final Plan Evaluator</b></td>
+      <td>After HITL Gate 2 approval</td>
+      <td>overall_quality · budget_adherence_% · completeness · api_success_rate · retry_penalty · hitl_changes_penalty</td>
+      <td>A–D grade. Logged to output/evaluation_log.json. Shown in PDF appendix.</td>
+    </tr>
+  </table>
+
+  <div class="section-title" style="margin-top:28px">New: API Success Rate Metric</div>
+  <p style="font-size:12px;color:#94a3b8;margin-bottom:12px;">
+    Since we now call real APIs, we track how many agents used live data vs fallback.
+  </p>
+  <table>
+    <tr><th>Score</th><th>Meaning</th></tr>
+    <tr><td>All 4 APIs live (weather+flights+hotel+places)</td><td>+1.0 bonus to final score</td></tr>
+    <tr><td>3 of 4 APIs live</td><td>No penalty</td></tr>
+    <tr><td>2 of 4 APIs live</td><td>-0.5 penalty + "partial data" warning in PDF</td></tr>
+    <tr><td>0–1 APIs live (all fallback)</td><td>-1.5 penalty + "estimated data" disclaimer in PDF</td></tr>
+  </table>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: FALLBACK ═══ -->
+<div id="tab-fallback" class="tab-content">
+
+  <div class="section-title">Checkpointing — Resume from Any Point</div>
+  <div class="cards" style="margin-bottom:24px">
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">💾</span><div><div class="card-title">How Checkpointing Works</div><div class="card-subtitle">LangGraph SqliteSaver — automatic</div></div></div>
+      <ul class="card-list">
+        <li>Every node writes its output to <code>checkpoints/trip_{session_id}.db</code> <b>automatically</b></li>
+        <li>LangGraph's <code>SqliteSaver</code> is attached at compile time — no extra code inside agents</li>
+        <li>If the process crashes (network drop, power off, error) the <code>.db</code> file preserves all completed nodes</li>
+        <li>On re-launch: <code>resume_session(session_id)</code> loads the last state and continues from the next node</li>
+        <li>HITL gates are checkpointed too — user won't be asked the same question twice on resume</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">🔄</span><div><div class="card-title">Resume Flow</div><div class="card-subtitle">checkpointer.py</div></div></div>
+      <ul class="card-list">
+        <li>At startup: print list of incomplete sessions (if any)</li>
+        <li>User can type session_id to resume <b>or</b> start new</li>
+        <li><code>graph.invoke(state, config={"configurable": {"thread_id": session_id}})</code></li>
+        <li>LangGraph automatically skips already-completed nodes</li>
+        <li>Checkpoint file auto-deleted after Gate 4 (PDF) confirms — clean output</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">📋</span><div><div class="card-title">What Gets Saved Per Checkpoint</div><div class="card-subtitle">Full TripState snapshot</div></div></div>
+      <ul class="card-list">
+        <li>Full <code>TripState</code> after every node (not just diffs)</li>
+        <li>HITL answers (gate decisions + human_feedback text)</li>
+        <li>Real API responses (flight offers, hotel list, places list)</li>
+        <li>Daily budget targets (no need to re-compute)</li>
+        <li>retry_count per agent (won't retry beyond limit on resume)</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">⚙</span><div><div class="card-title">Implementation (main.py)</div><div class="card-subtitle">3 lines to enable</div></div></div>
+      <div class="card-body" style="font-family:monospace;font-size:11px;line-height:1.7;color:#4ade80">
+        from langgraph.checkpoint.sqlite import SqliteSaver<br>
+        checkpointer = SqliteSaver.from_conn_string(<br>
+        &nbsp;&nbsp;f"checkpoints/trip_{session_id}.db"<br>
+        )<br>
+        graph = workflow.compile(checkpointer=checkpointer)
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Retry Logic — 3 Retries per Agent</div>
+  <div class="cards" style="margin-bottom:24px">
+    <div class="card" style="border-color:#f59e0b">
+      <div class="card-header"><span class="card-icon">🔁</span><div><div class="card-title">Retry Strategy</div><div class="card-subtitle">fallback_handlers.py · with_retry()</div></div></div>
+      <ul class="card-list">
+        <li>Each agent wrapped in <code>with_retry(fn, max_retries=3)</code></li>
+        <li>Attempt 1 → fail → wait 2s → Attempt 2</li>
+        <li>Attempt 2 → fail → wait 4s → Attempt 3 (exponential back-off)</li>
+        <li>Attempt 3 → fail → activate fallback (LLM estimate)</li>
+        <li>Checkpoint saved after each attempt so resume skips completed retries</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#f59e0b">
+      <div class="card-header"><span class="card-icon">📊</span><div><div class="card-title">Retry State Tracking</div><div class="card-subtitle">In TripState</div></div></div>
+      <ul class="card-list">
+        <li><code>retry_count</code> — current attempt number (1, 2, 3)</li>
+        <li><code>failed_agents[]</code> — agents that exhausted all 3 retries</li>
+        <li><code>api_status{}</code> — "live" | "fallback" per agent</li>
+        <li>Orchestrator reviews <code>failed_agents</code> before approving</li>
+        <li>If critical agent (weather/transport) failed → warn user in HITL Gate 3</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#f59e0b">
+      <div class="card-header"><span class="card-icon">🎯</span><div><div class="card-title">Orchestrator Retry (Itinerary Quality)</div><div class="card-subtitle">Separate from API retry</div></div></div>
+      <ul class="card-list">
+        <li>If review score &lt; 7 → Orchestrator triggers itinerary re-generation</li>
+        <li>Max <b>3 re-generations</b> (not API retries — LLM quality retries)</li>
+        <li>Each re-gen passes review issues as feedback to Itinerary Agent</li>
+        <li>After 3 attempts → force-approve with warnings noted in PDF</li>
+        <li>Each re-gen attempt checkpointed — can resume if interrupted</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-title">API Fallback Table</div>
+  <table>
+    <tr><th>Scenario</th><th>Trigger</th><th>Retries</th><th>Fallback (after 3 fails)</th></tr>
+    <tr><td>OWM Geocoding fails</td><td>HTTP error / timeout</td><td>3 × 2s back-off</td><td>LLM guesses lat/long from known cities</td></tr>
+    <tr><td>OWM Weather API fails</td><td>HTTP error / timeout</td><td>3 × 2s back-off</td><td>LLM uses seasonal knowledge for destination</td></tr>
+    <tr><td>Amadeus OAuth token expired</td><td>401 response</td><td>Auto-refresh (not counted)</td><td>New token fetched transparently in amadeus_client.py</td></tr>
+    <tr><td>Amadeus Flight API fails</td><td>HTTP error / no results</td><td>3 × exponential</td><td>LLM estimates price from known routes + distance</td></tr>
+    <tr><td>RapidAPI train API fails/quota</td><td>429 or 5xx</td><td>3 × exponential</td><td>LLM estimates from IRCTC fare tables</td></tr>
+    <tr><td>Amadeus Hotel API — no results</td><td>Empty results list</td><td>3 × widen radius (5→20→50km)</td><td>LLM suggests hotel category + typical price</td></tr>
+    <tr><td>Foursquare no results</td><td>Empty results</td><td>3 × category relaxation</td><td>LLM generates top attractions for destination</td></tr>
+    <tr><td>PDF generation fails</td><td>ReportLab error</td><td>3 × retry</td><td>Export full itinerary as formatted JSON to output/</td></tr>
+  </table>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: HITL ═══ -->
+<div id="tab-hitl" class="tab-content">
+  <div class="section-title">6 HITL Gates</div>
+  <table>
+    <tr><th>Gate</th><th>When</th><th>What User Sees</th><th>Choices</th></tr>
+    <tr style="background:#1c0f04">
+      <td><b style="color:#fb923c">Gate 0</b> — Weather Advisory</td>
+      <td>After Weather Agent detects bad conditions at destination</td>
+      <td>
+        Weather warning + <b>2–3 alternative destinations</b> with similar vibe but better weather<br>
+        <em style="font-size:11px;color:#fb923c">
+          e.g. "Goa in July has heavy monsoon (score 3/10). Similar alternatives:<br>
+          • Andaman Islands — clear skies, beach vibe<br>
+          • Varkala, Kerala — light showers only, beach &amp; cliffs<br>
+          • Pondicherry — manageable rain, French Quarter charm"
+        </em>
+      </td>
+      <td>Keep original destination · Pick an alternative (re-geocode + re-fetch weather)</td>
+    </tr>
+    <tr>
+      <td><b>Gate 1</b> — Details</td>
+      <td>After User Input + Memory load (before any API calls)</td>
+      <td>Trip summary + memory recall ("Your last trip was to Goa")</td>
+      <td>Confirm → proceed · Modify → re-enter · Start over</td>
+    </tr>
+    <tr style="background:#0a1628">
+      <td><b style="color:#60a5fa">Gate 2</b> — Places Preview</td>
+      <td>After Places Agent (Foursquare) runs · before itinerary is built</td>
+      <td>
+        Categorised list of all discovered places:<br>
+        <em style="font-size:11px;color:#93c5fd">
+          📍 Must-visit: Calangute Beach, Fort Aguada, Dudhsagar Falls…<br>
+          🍽 Food: Britto's, Thalassa, Martin's Corner…<br>
+          🎯 Activities: Scuba Diving at Grande Island, Spice Plantation Tour…<br>
+          💎 Hidden gems: Cabo de Rama Fort, Butterfly Beach…
+        </em>
+      </td>
+      <td>Confirm all → proceed · Add your own places (text) · Remove a place</td>
+    </tr>
+    <tr style="background:#091a28">
+      <td><b style="color:#38bdf8">Gate 3</b> — Budget Approval</td>
+      <td>After Budget Agent · before Itinerary Agent</td>
+      <td>
+        Full budget breakdown: transport · hotel · food · activities · misc · <b>total vs stated budget</b><br>
+        Per-day target table with weights (arrival day, heavy sightseeing, leisure, departure)<br>
+        <em style="font-size:11px;color:#38bdf8">
+          If over budget or user unhappy:<br>
+          • Option A — show cheaper places at same destination (free/low-cost swaps)<br>
+          • Option B — show alternate transport ranked by saving (train saves Rs.4,200)<br>
+          • Option C — apply both simultaneously
+        </em>
+      </td>
+      <td>Approve → Itinerary · Option A (cheaper places) · Option B (cheaper transport) · Option C (both) · Re-runs budget until approved (max 3 rounds)</td>
+    </tr>
+    <tr>
+      <td><b>Gate 4</b> — Full Plan</td>
+      <td>After Orchestrator approval + Output Guardrail</td>
+      <td>Complete itinerary with <b>real hotel name</b>, <b>real flight price</b>, <b>real weather</b>, budget table, confirmed places</td>
+      <td>Approve → PDF · Request changes (text) → re-plan · Cancel</td>
+    </tr>
+    <tr>
+      <td><b>Gate 5</b> — PDF</td>
+      <td>After PDF generation + Evaluation 2</td>
+      <td>PDF file path + final score (e.g. "8.5/10 Grade A") + budget adherence %</td>
+      <td>Open folder · Regenerate · Done</td>
+    </tr>
+  </table>
+
+  <div class="section-title" style="margin-top:28px">Gate 0 — Weather Decision Logic</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🌧</span><div><div class="card-title">Bad Weather Triggers</div></div></div>
+      <ul class="card-list">
+        <li>Weather score &lt; 5/10</li>
+        <li>Heavy rain / cyclone / flood warnings</li>
+        <li>Extreme heat (&gt; 42°C) for outdoor destinations</li>
+        <li>Dense fog / visibility alerts for hill stations</li>
+        <li>Off-season with majority of attractions closed</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🔀</span><div><div class="card-title">Alternative Suggestion Logic</div></div></div>
+      <ul class="card-list">
+        <li>Same travel_type (beach → beach, hill → hill, city → city)</li>
+        <li>Similar budget range &amp; travel distance</li>
+        <li>Weather score ≥ 7/10 during user's travel dates</li>
+        <li>LLM generates suggestions with reasoning</li>
+        <li>Each alternative shown with weather score + 1-line description</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">✓</span><div><div class="card-title">If User Keeps Original</div></div></div>
+      <ul class="card-list">
+        <li>Weather warning stored in state as a concern</li>
+        <li>Itinerary agent adjusts plan (indoor activities, flexible days)</li>
+        <li>PDF includes weather advisory section</li>
+        <li>No re-geocoding needed — proceed to Orchestrator</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">🗺</span><div><div class="card-title">If User Picks Alternative</div></div></div>
+      <ul class="card-list">
+        <li>New destination saved to trip_preferences in state</li>
+        <li>Re-geocode to get new lat/long</li>
+        <li>Re-fetch weather for new destination to confirm score ≥ 7</li>
+        <li>All subsequent agents use new destination</li>
+        <li>Memory Agent notes destination switch for future recall</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:32px">Gate 2 — Places Preview Logic</div>
+  <div class="cards">
+    <div class="card">
+      <div class="card-header"><span class="card-icon">📍</span><div><div class="card-title">What is Shown</div></div></div>
+      <ul class="card-list">
+        <li><b>Must-visit</b> — 3-5 top attractions with description, time needed, entry fee</li>
+        <li><b>Food spots</b> — 3-4 restaurants with cuisine type and must-try dish</li>
+        <li><b>Activities</b> — 2-3 experiences matching travel_type (beach, trek, cultural)</li>
+        <li><b>Hidden gems</b> — 1-2 lesser-known local favourites</li>
+        <li>Source shown: "via Foursquare" or "LLM recommended" (if fallback)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">➕</span><div><div class="card-title">User Adds a Place</div></div></div>
+      <ul class="card-list">
+        <li>User types: "I also want to visit Dudhsagar Falls"</li>
+        <li>System validates: is it reachable from destination? (LLM check)</li>
+        <li>If valid → added to must_visit list in state</li>
+        <li>Itinerary Agent will schedule it on an appropriate day</li>
+        <li>Budget Agent accounts for any additional entry fee</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">✕</span><div><div class="card-title">User Removes a Place</div></div></div>
+      <ul class="card-list">
+        <li>User says: "Remove scuba diving" or picks by number</li>
+        <li>Place removed from the relevant category in state</li>
+        <li>Itinerary Agent will not schedule the removed place</li>
+        <li>If it was the only activity → suggest replacement from hidden gems</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-icon">✓</span><div><div class="card-title">After Confirmation</div></div></div>
+      <ul class="card-list">
+        <li>Final confirmed place list saved to <code>places_data.confirmed</code> in state</li>
+        <li>Itinerary Agent receives only the confirmed list</li>
+        <li>PDF includes a "Places You'll Visit" section with map-ready names</li>
+        <li>Memory Agent saves user's place preferences for next trip</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section-title" style="margin-top:32px">Gate 3 — Budget Approval Logic</div>
+  <div class="cards">
+    <div class="card" style="border-color:#38bdf8">
+      <div class="card-header"><span class="card-icon">📊</span><div><div class="card-title">What Is Shown</div></div></div>
+      <ul class="card-list">
+        <li>Full breakdown: transport · hotel · food · activities · misc · <b>TOTAL</b></li>
+        <li>Stated budget vs estimated total — difference shown in Rs.</li>
+        <li>Per-day target table: Day 1 Rs.2,210 · Day 2 Rs.2,990 · Day 3 Rs.2,340…</li>
+        <li>Budget verdict: "Over by Rs.3,200" or "Comfortably within budget"</li>
+        <li>Savings tips already computed by Budget Agent (shown here)</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#fb923c">
+      <div class="card-header"><span class="card-icon">💸</span><div><div class="card-title">Option A — Cheaper Places (same destination)</div></div></div>
+      <ul class="card-list">
+        <li>LLM identifies the most expensive confirmed places by entry_fee_inr</li>
+        <li>Suggests free or low-cost alternatives with similar experience</li>
+        <li>e.g. "Replace Spice Plantation Tour Rs.1,800 → Mapusa Market (free)"</li>
+        <li>e.g. "Replace Scuba Diving Rs.2,800 → Snorkelling at Calangute Rs.400"</li>
+        <li>User selects which swaps to accept → places_confirmed updated → budget re-run</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#38bdf8">
+      <div class="card-header"><span class="card-icon">🚌</span><div><div class="card-title">Option B — Cheaper Transport (same location)</div></div></div>
+      <ul class="card-list">
+        <li>Transport Agent re-queries all available modes ranked by cost</li>
+        <li>Shows each option: mode · cost saving · extra travel time</li>
+        <li>e.g. "✈ Flight Rs.8,000 (current)" vs "🚂 Train Rs.3,800 — saves Rs.4,200, +8h"</li>
+        <li>e.g. "🚌 Bus Rs.1,200 — saves Rs.6,800, +14h"</li>
+        <li>User picks mode → transport_data updated → budget re-run</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#4ade80">
+      <div class="card-header"><span class="card-icon">♻</span><div><div class="card-title">Re-run Loop (max 3 rounds)</div></div></div>
+      <ul class="card-list">
+        <li>After user picks Option A/B/C → Budget Agent re-runs with updated choices</li>
+        <li>New budget breakdown shown immediately — Gate 3 repeats</li>
+        <li>If still over budget → offer options again</li>
+        <li>After 3 rounds without approval → warn user and let them force-approve</li>
+        <li>All budget revision history saved to state (<code>budget_revisions[]</code>)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: STATE ═══ -->
+<div id="tab-state" class="tab-content">
+  <div class="section-title">TripState Schema</div>
+  <pre class="tree" style="font-size:11px;line-height:1.8">
+<span class="tree-new">class TripState(TypedDict):</span>
+
+  <span class="tree-comment"># ── Session + Checkpointing + Logging ────────────────────────────────</span>
+  <span class="tree-new">session_id:             str</span>    <span class="tree-comment"># uuid4 — used as LangGraph thread_id for SqliteSaver</span>
+  <span class="tree-new">checkpoint_path:        str</span>    <span class="tree-comment"># "checkpoints/trip_{session_id}.db"</span>
+  <span class="tree-new">log_path:               str</span>    <span class="tree-comment"># "logs/session_{session_id}.log"</span>
+  <span class="tree-new">last_completed_node:    str</span>    <span class="tree-comment"># name of last successfully finished node</span>
+  <span class="tree-new">cache_hits:             dict</span>   <span class="tree-comment"># {geocode: bool, weather: bool, places: bool}</span>
+
+  <span class="tree-comment"># ── Core ──────────────────────────────────────────────────────────────</span>
+  user_profile:           dict   <span class="tree-comment"># {user_id, name, email}</span>
+  trip_preferences:       dict   <span class="tree-comment"># {source, destination, start_date, end_date, budget,</span>
+                                 <span class="tree-comment">#  travelers, travel_type, hotel_pref, food_pref, transport_pref}</span>
+
+  <span class="tree-comment"># ── NEW: Geocoding (resolved once, used by all agents) ─────────────────</span>
+  <span class="tree-api">coordinates:            dict</span>   <span class="tree-comment"># {source_lat, source_lon, dest_lat, dest_lon}</span>
+
+  <span class="tree-comment"># ── Memory ────────────────────────────────────────────────────────────</span>
+  memory_context:         dict   <span class="tree-comment"># {past_trips, preferred_hotel, avg_budget, ...}</span>
+
+  <span class="tree-comment"># ── Live API outputs ───────────────────────────────────────────────────</span>
+  weather_data:           dict   <span class="tree-comment"># {condition, summary, concerns, score, raw_forecast[]}</span>
+  <span class="tree-new">weather_advisory:        dict</span>   <span class="tree-comment"># {triggered, alternatives[], user_choice,</span>
+                                 <span class="tree-comment">#  destination_changed: bool}</span>
+  transport_data:         dict   <span class="tree-comment"># {final_mode, flight_offer{}, train_option{},</span>
+                                 <span class="tree-comment">#  estimated_cost_per_person, duration_hours}</span>
+  hotel_data:             dict   <span class="tree-comment"># {recommended{name,id,price_per_night,total},</span>
+                                 <span class="tree-comment">#  top_3[], amadeus_hotel_id}</span>
+  places_data:            dict   <span class="tree-comment"># {must_visit[], food_spots[], activities[],</span>
+                                 <span class="tree-comment">#  hidden_gems[], source: "foursquare"|"llm"}</span>
+  <span class="tree-new">places_confirmed:        dict</span>   <span class="tree-comment"># {must_visit[], food_spots[], activities[],</span>
+                                 <span class="tree-comment">#  hidden_gems[], user_added[], user_removed[]}</span>
+                                 <span class="tree-comment">#  set after Gate 2 (Places Preview HITL)</span>
+  budget_summary:         dict   <span class="tree-comment"># {breakdown{}, total_estimate, within_budget,</span>
+                                 <span class="tree-comment">#  daily_pool, base_daily}</span>
+  <span class="tree-new">daily_budget_targets:    list</span>   <span class="tree-comment"># [{day:1, date:"2025-07-01", day_type:"arrival",</span>
+                                 <span class="tree-comment">#   weight:0.85, target_inr:2800,</span>
+                                 <span class="tree-comment">#   min_inr:2660, max_inr:2940}] one per day</span>
+  <span class="tree-new">budget_revisions:        list</span>   <span class="tree-comment"># history of Gate 3 rounds:</span>
+                                 <span class="tree-comment">#  [{round:1, action:"cheaper_places",</span>
+                                 <span class="tree-comment">#    swaps:[], old_total:31200, new_total:27800}]</span>
+  <span class="tree-new">budget_gate_round:       int</span>    <span class="tree-comment"># current Gate 3 round (max 3)</span>
+  itinerary:              dict   <span class="tree-comment"># {title, overview, days[], packing_list,</span>
+                                 <span class="tree-comment">#  emergency_contacts}</span>
+  review_status:          dict   <span class="tree-comment"># {passed, score, issues[], warnings[]}</span>
+
+  <span class="tree-comment"># ── Evaluation + Guardrails ───────────────────────────────────────────</span>
+  eval_scores:            dict   <span class="tree-comment"># {pacing, variety, preference_alignment, overall}</span>
+  guardrail_results:      dict   <span class="tree-comment"># {input_valid, budget_conflict, output_valid, warnings[]}</span>
+
+  <span class="tree-comment"># ── NEW: API call tracking ─────────────────────────────────────────────</span>
+  <span class="tree-api">api_status:             dict</span>   <span class="tree-comment"># {weather:"live"|"fallback", flights:"live"|"fallback",</span>
+                                 <span class="tree-comment">#  trains:"live"|"fallback", hotels:"live"|"fallback",</span>
+                                 <span class="tree-comment">#  places:"live"|"fallback"}</span>
+
+  <span class="tree-comment"># ── Orchestrator + HITL ──────────────────────────────────────────────</span>
+  orchestrator_decision:  dict
+  hitl_approved:          bool
+  hitl_gate:              str    <span class="tree-comment"># "gate0"|"gate1"|"gate2"|"gate3"|"gate4"|"gate5"</span>
+  human_feedback:         str
+  hitl_change_count:      int    <span class="tree-comment"># tracks how many times user requested changes</span>
+  retry_count:            int    <span class="tree-comment"># max 3 retries per agent · reset per agent</span>
+  failed_agents:          list   <span class="tree-comment"># agents that exhausted all 3 retries (force-approved)</span>
+  pdf_status:             dict
+  pdf_path:               Optional[str]
+  error:                  Optional[str]
+  </pre>
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: ENHANCEMENTS ═══ -->
+<div id="tab-enhancements" class="tab-content">
+  <div class="section-title">5 Production Enhancements</div>
+  <p style="font-size:12px;color:#94a3b8;margin-bottom:20px">
+    These additions were not in the original assignment but make the system production-grade. Each is small to implement but high in impact.
+  </p>
+
+  <!-- Enhancement 1: API Cache -->
+  <div class="section-title">1. API Response Cache</div>
+  <div class="cards">
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">💾</span><div><div class="card-title">Why It Matters</div></div></div>
+      <ul class="card-list">
+        <li>Free API tiers have daily call limits (OWM: 1,000/day · Foursquare: 1,000/day)</li>
+        <li>During development you'll run the planner 20+ times for the same destination</li>
+        <li>Without cache: waste all quota on identical requests</li>
+        <li>With cache: call API once, reuse for hours/days</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">⚙</span><div><div class="card-title">Implementation — cache_store.py</div></div></div>
+      <div class="card-body" style="font-family:monospace;font-size:11px;line-height:1.8;color:#4ade80">
+        def get(key, ttl_seconds):<br>
+        &nbsp;&nbsp;path = f"cache/{key}.json"<br>
+        &nbsp;&nbsp;if not exists or expired: return None<br>
+        &nbsp;&nbsp;return json.load(path)<br><br>
+        def set(key, data):<br>
+        &nbsp;&nbsp;json.dump({"ts": now, "data": data}, path)
+      </div>
+    </div>
+    <div class="card" style="border-color:#22c55e">
+      <div class="card-header"><span class="card-icon">🕐</span><div><div class="card-title">TTL Per API</div></div></div>
+      <table style="font-size:11px;width:100%">
+        <tr><th>Cache Key</th><th>TTL</th><th>Reason</th></tr>
+        <tr><td><code>geocode_{city}</code></td><td>7 days</td><td>Cities don't move</td></tr>
+        <tr><td><code>weather_{dest}_{date}</code></td><td>1 hour</td><td>Forecast changes</td></tr>
+        <tr><td><code>places_{dest}</code></td><td>24 hours</td><td>Attractions stable</td></tr>
+        <tr><td>Flights / Hotels</td><td>Not cached</td><td>Prices change every minute</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Enhancement 2: Rich UI -->
+  <div class="section-title" style="margin-top:28px">2. Rich Terminal Progress Display</div>
+  <div class="cards">
+    <div class="card" style="border-color:#a78bfa">
+      <div class="card-header"><span class="card-icon">🖥</span><div><div class="card-title">Why It Matters</div></div></div>
+      <ul class="card-list">
+        <li>10 agents run sequentially/in-parallel — user sees nothing for ~30 seconds</li>
+        <li><code>rich</code> library renders a live status table that updates as each agent finishes</li>
+        <li>Shows: agent name · status (running / done / failed) · data source (live / cache / fallback) · time taken</li>
+        <li>One import — no architectural change to agents</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#a78bfa">
+      <div class="card-header"><span class="card-icon">📊</span><div><div class="card-title">What It Looks Like (rich_ui.py)</div></div></div>
+      <div class="card-body" style="font-family:monospace;font-size:11px;line-height:1.8;color:#c4b5fd;background:#0a0010;padding:10px;border-radius:6px">
+        ┌─────────────────────────────────────┐<br>
+        │ 🧳 Trip Planner v3 — Goa · Jul 1–5 │<br>
+        ├──────────────┬────────┬─────────────┤<br>
+        │ Agent        │ Status │ Source      │<br>
+        ├──────────────┼────────┼─────────────┤<br>
+        │ 🌤 Weather   │ ✓ done │ OWM live    │<br>
+        │ ✈ Transport  │ ⟳ run  │ Amadeus...  │<br>
+        │ 🏨 Hotel     │ ⏳ wait │ —           │<br>
+        │ 📍 Places    │ ⏳ wait │ —           │<br>
+        └──────────────┴────────┴─────────────┘
+      </div>
+    </div>
+  </div>
+
+  <!-- Enhancement 3: Cost Impact -->
+  <div class="section-title" style="margin-top:28px">3. Cost Impact at Gate 2 (Places Preview)</div>
+  <div class="cards">
+    <div class="card" style="border-color:#38bdf8">
+      <div class="card-header"><span class="card-icon">💰</span><div><div class="card-title">Why It Matters</div></div></div>
+      <ul class="card-list">
+        <li>User adds/removes places without knowing the budget impact</li>
+        <li>Each place has entry_fee_inr + local transport cost in state</li>
+        <li>Show impact instantly: "Adding Dudhsagar day trip → +Rs.1,400 on Day 2"</li>
+        <li>Running total shown: "Current daily pool spend: Rs.11,200 / Rs.13,000"</li>
+        <li>Helps user make informed choices — not just picking favourite names</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#38bdf8">
+      <div class="card-header"><span class="card-icon">⚙</span><div><div class="card-title">Implementation</div></div></div>
+      <ul class="card-list">
+        <li>Budget Agent already outputs <code>daily_budget_targets[]</code></li>
+        <li>Places already have <code>entry_fee_inr</code> + <code>time_needed_hours</code></li>
+        <li>Cost impact = entry_fee × travelers + estimated local transport</li>
+        <li>No extra LLM call — pure arithmetic in <code>hitl/checkpoints.py</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Enhancement 4: WhatsApp Export -->
+  <div class="section-title" style="margin-top:28px">4. WhatsApp-Ready Text Export</div>
+  <div class="cards">
+    <div class="card" style="border-color:#f59e0b">
+      <div class="card-header"><span class="card-icon">💬</span><div><div class="card-title">Why It Matters</div></div></div>
+      <ul class="card-list">
+        <li>PDF is great for printing — not for sharing in a WhatsApp group</li>
+        <li><code>output/summary.txt</code> is emoji-formatted, line-by-line, copy-paste ready</li>
+        <li>Travel companions can see the plan without opening a PDF</li>
+        <li>One extra function in pdf_agent.py — no new dependencies</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#f59e0b">
+      <div class="card-header"><span class="card-icon">📋</span><div><div class="card-title">Format Example</div></div></div>
+      <div class="card-body" style="font-family:monospace;font-size:11px;line-height:1.8;color:#fcd34d;background:#0a0800;padding:10px;border-radius:6px">
+        🏖 *GOA TRIP — 5 Days*<br>
+        📅 Jul 1–5 | 👥 2 people<br>
+        💰 Budget: Rs.28,500<br>
+        ✈ IndiGo 6E-234 | 🏨 Taj Holiday Village<br>
+        ─────────────────────<br>
+        *Day 1 — Arrival &amp; Calangute*<br>
+        🌅 Morning: Check-in, Calangute Beach<br>
+        🍽 Lunch: Britto's (Rs.600)<br>
+        🌇 Evening: Sunset at Baga<br>
+        💸 Day spend: Rs.2,210
+      </div>
+    </div>
+  </div>
+
+  <!-- Enhancement 5: Session Log -->
+  <div class="section-title" style="margin-top:28px">5. Structured Session Log</div>
+  <div class="cards">
+    <div class="card" style="border-color:#f87171">
+      <div class="card-header"><span class="card-icon">📋</span><div><div class="card-title">Why It Matters</div></div></div>
+      <ul class="card-list">
+        <li>When something silently fails (API returns wrong data, LLM gives bad output) — you have no visibility without a log</li>
+        <li>Essential for debugging in production and learning what actually happened</li>
+        <li>Teaches structured logging — a core engineering skill</li>
+        <li>Uses Python's standard <code>logging</code> module — no new dependency</li>
+      </ul>
+    </div>
+    <div class="card" style="border-color:#f87171">
+      <div class="card-header"><span class="card-icon">📄</span><div><div class="card-title">Log Format — logs/session_{id}.log</div></div></div>
+      <div class="card-body" style="font-family:monospace;font-size:10px;line-height:1.8;color:#fca5a5;background:#0a0000;padding:10px;border-radius:6px">
+        [14:23:01] INFO  weather_agent START<br>
+        [14:23:01] INFO  cache HIT weather_Goa_2025-07-01<br>
+        [14:23:01] INFO  weather_agent DONE score=7 (0.1s)<br>
+        [14:23:02] INFO  transport_agent START<br>
+        [14:23:03] WARN  Amadeus API FAIL retry=1/3<br>
+        [14:23:05] WARN  Amadeus API FAIL retry=2/3<br>
+        [14:23:07] WARN  Amadeus API FAIL retry=3/3<br>
+        [14:23:07] WARN  transport_agent FALLBACK activated<br>
+        [14:23:07] INFO  transport_agent DONE source=llm (5.2s)
+      </div>
+    </div>
+    <div class="card" style="border-color:#f87171">
+      <div class="card-header"><span class="card-icon">⚙</span><div><div class="card-title">Implementation</div></div></div>
+      <ul class="card-list">
+        <li>Single logger initialised in <code>main.py</code> with <code>session_id</code> in filename</li>
+        <li>Each agent calls <code>logger.info()</code> / <code>logger.warning()</code> at start, end, retry, fallback</li>
+        <li>Log level configurable via <code>.env</code>: <code>LOG_LEVEL=INFO</code></li>
+        <li>Log file auto-closed and archived after Gate 4 PDF confirm</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ════════════════════════════════════ TAB: SETUP ═══ -->
+<div id="tab-setup" class="tab-content">
+  <div class="section-title">Setup Guide — Get All API Keys</div>
+
+  <div class="sub-title">Step 1 — OpenWeatherMap (Weather + Geocoding)</div>
+  <ol style="font-size:12px;color:#94a3b8;line-height:2.2;padding-left:20px;margin-bottom:16px">
+    <li>Go to <b>openweathermap.org</b> → Sign up (free)</li>
+    <li>Click your username → <b>My API Keys</b></li>
+    <li>Copy the default key (or generate a new one)</li>
+    <li>Free tier: 1,000 API calls/day — more than enough for development</li>
+  </ol>
+
+  <div class="sub-title">Step 2 — Amadeus (Flights + Hotels)</div>
+  <ol style="font-size:12px;color:#94a3b8;line-height:2.2;padding-left:20px;margin-bottom:16px">
+    <li>Go to <b>developers.amadeus.com</b> → Sign up → Create an App</li>
+    <li>Copy the <b>API Key</b> and <b>API Secret</b></li>
+    <li>Free sandbox uses test data (realistic format, not live prices)</li>
+    <li>To upgrade to live: complete Amadeus production application (paid)</li>
+  </ol>
+
+  <div class="sub-title">Step 3 — RapidAPI Indian Railways</div>
+  <ol style="font-size:12px;color:#94a3b8;line-height:2.2;padding-left:20px;margin-bottom:16px">
+    <li>Go to <b>rapidapi.com</b> → Search <b>"IRCTC Indian Railways"</b></li>
+    <li>Subscribe to the free tier → Copy your RapidAPI Key</li>
+    <li>Free tier: 100 calls/month → enough for learning &amp; testing</li>
+  </ol>
+
+  <div class="sub-title">Step 4 — Foursquare Places</div>
+  <ol style="font-size:12px;color:#94a3b8;line-height:2.2;padding-left:20px;margin-bottom:16px">
+    <li>Go to <b>foursquare.com/developer</b> → Sign up → Create Project</li>
+    <li>Copy the <b>API Key</b> from your project dashboard</li>
+    <li>Free tier: 1,000 calls/day</li>
+  </ol>
+
+  <div class="sub-title">Your .env File</div>
+  <div class="env-box">
+    <div class="env-section"># ── LLM ──────────────────────────────────────────</div>
+    <div><span class="env-key">OPENROUTER_API_KEY</span>=<span class="env-val">sk-or-v1-xxxxxxxxxxxxxxxxxxxx</span></div>
+    <br>
+    <div class="env-section"># ── Weather + Geocoding (same key) ───────────────</div>
+    <div><span class="env-key">OPENWEATHER_API_KEY</span>=<span class="env-val">your_owm_key_here</span></div>
+    <br>
+    <div class="env-section"># ── Flights + Hotels ─────────────────────────────</div>
+    <div><span class="env-key">AMADEUS_API_KEY</span>=<span class="env-val">your_amadeus_key_here</span></div>
+    <div><span class="env-key">AMADEUS_API_SECRET</span>=<span class="env-val">your_amadeus_secret_here</span></div>
+    <br>
+    <div class="env-section"># ── Indian Railways ──────────────────────────────</div>
+    <div><span class="env-key">RAPIDAPI_KEY</span>=<span class="env-val">your_rapidapi_key_here</span></div>
+    <br>
+    <div class="env-section"># ── Places ────────────────────────────────────────</div>
+    <div><span class="env-key">FOURSQUARE_API_KEY</span>=<span class="env-val">your_foursquare_key_here</span></div>
+  </div>
+
+  <div class="sub-title" style="margin-top:20px">Priority Order to Sign Up</div>
+  <table>
+    <tr><th>#</th><th>API</th><th>Priority</th><th>Why</th></tr>
+    <tr><td>1</td><td>OpenWeatherMap</td><td><span class="td-badge" style="background:#052e16;color:#34d399">Must have first</span></td><td>Used by Weather Agent (core) + all agents need geocoding</td></tr>
+    <tr><td>2</td><td>Amadeus</td><td><span class="td-badge" style="background:#1e3a8a;color:#93c5fd">High priority</span></td><td>Flights + Hotels — the two most expensive &amp; important data points</td></tr>
+    <tr><td>3</td><td>RapidAPI Railways</td><td><span class="td-badge" style="background:#1e3a8a;color:#93c5fd">High priority</span></td><td>India-specific — train is often cheaper than flight</td></tr>
+    <tr><td>4</td><td>Foursquare</td><td><span class="td-badge" style="background:#713f12;color:#fef08a">Nice to have</span></td><td>Places agent has good LLM fallback — not blocking</td></tr>
+  </table>
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>
